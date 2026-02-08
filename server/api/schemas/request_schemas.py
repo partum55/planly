@@ -20,7 +20,12 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class GoogleOAuthCallbackRequest(BaseModel):
+    code: str  # Authorization code from Google OAuth
+
+
 class LinkTelegramRequest(BaseModel):
+    email: EmailStr  # Added per AGENT_1_TASKS spec
     telegram_id: int
     telegram_username: Optional[str] = None
 
@@ -36,6 +41,7 @@ class ScreenshotMetadata(BaseModel):
     window_title: Optional[str] = None
     app_name: Optional[str] = None
     ocr_confidence: Optional[float] = None
+    raw_text: Optional[str] = None  # Full OCR dump for validation
 
 
 class ConversationContext(BaseModel):
@@ -44,15 +50,16 @@ class ConversationContext(BaseModel):
 
 
 class AgentProcessRequest(BaseModel):
-    conversation_id: Optional[UUID] = None
-    source: str  # 'desktop_screenshot' or 'telegram'
+    """Request format matching AGENT_1_TASKS spec"""
+    user_prompt: str  # What the user typed (required per spec)
+    conversation_id: Optional[str] = None  # Changed to str to match spec
+    source: str = "desktop_screenshot"  # 'desktop_screenshot' or 'telegram'
     context: ConversationContext
 
 
 class ConfirmActionsRequest(BaseModel):
-    conversation_id: UUID
+    conversation_id: str  # Changed to str to match AGENT_1_TASKS spec
     action_ids: List[str]
-    user_input: Optional[str] = None
 
 
 # Telegram webhook schema

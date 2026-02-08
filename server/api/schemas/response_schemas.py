@@ -1,17 +1,23 @@
 """API response schemas"""
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union, Literal
 from uuid import UUID
 
 
 class TokenResponse(BaseModel):
-    user_id: UUID
+    user_id: str  # Changed to str to match AGENT_1_TASKS spec
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
 
 
 class UserResponse(BaseModel):
+    user_id: str
+    email: str
+    full_name: Optional[str]
+    avatar_url: Optional[str] = None
+
+
+class UserProfileResponse(BaseModel):
     id: UUID
     email: str
     full_name: Optional[str]
@@ -26,12 +32,39 @@ class ProposedAction(BaseModel):
     parameters: Dict[str, Any]
 
 
+# Block types for agent response (AGENT_1_TASKS spec)
+class TextBlock(BaseModel):
+    type: Literal["text"]
+    content: str
+
+
+class ActionCardsBlock(BaseModel):
+    type: Literal["action_cards"]
+    actions: List[ProposedAction]
+
+
+class CalendarPickerBlock(BaseModel):
+    type: Literal["calendar_picker"]
+    prompt: str
+
+
+class TimePickerBlock(BaseModel):
+    type: Literal["time_picker"]
+    prompt: str
+
+
+class ErrorBlock(BaseModel):
+    type: Literal["error"]
+    message: str
+
+
+ResponseBlock = Union[TextBlock, ActionCardsBlock, CalendarPickerBlock, TimePickerBlock, ErrorBlock]
+
+
 class AgentProcessResponse(BaseModel):
-    conversation_id: UUID
-    intent: Optional[Dict[str, Any]]
-    proposed_actions: List[ProposedAction]
-    requires_clarification: bool
-    clarification_question: Optional[str] = None
+    """Response format matching AGENT_1_TASKS spec"""
+    conversation_id: str
+    blocks: List[ResponseBlock]
 
 
 class ActionResult(BaseModel):

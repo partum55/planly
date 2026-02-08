@@ -9,7 +9,10 @@ from api.schemas.response_schemas import (
     AgentProcessResponse,
     ConfirmActionsResponse,
     ProposedAction,
-    ActionResult
+    ActionResult,
+    TextBlock,
+    ActionCardsBlock,
+    ErrorBlock
 )
 from api.middleware.auth_middleware import get_current_user
 from database.client import get_supabase
@@ -83,7 +86,7 @@ async def process_conversation(
 
         # Get or create conversation
         if request.conversation_id:
-            conversation = await conversation_repo.get_conversation_by_id(request.conversation_id)
+            conversation = await conversation_repo.get_conversation_by_id(UUID(request.conversation_id))
             if not conversation:
                 raise HTTPException(status_code=404, detail="Conversation not found")
             conversation_id = UUID(conversation['id'])
@@ -119,24 +122,48 @@ async def process_conversation(
                 'tools': result['proposed_actions']
             }
 
+        # Build blocks response (AGENT_1_TASKS format)
+        blocks = []
+
+        # Add text block with agent response
+        if result.get('requires_clarification'):
+            blocks.append(TextBlock(
+                type="text",
+                content=result.get('clarification_question', 'Could you provide more details?')
+            ))
+        elif result.get('proposed_actions'):
+            blocks.append(TextBlock(
+                type="text",
+                content="I see a plan taking shape. Let me help organize that."
+            ))
+            blocks.append(ActionCardsBlock(
+                type="action_cards",
+                actions=[ProposedAction(**action) for action in result['proposed_actions']]
+            ))
+        else:
+            blocks.append(TextBlock(
+                type="text",
+                content="I couldn't identify any actionable plans from the conversation. Could you provide more details?"
+            ))
+
         return AgentProcessResponse(
-            conversation_id=conversation_id,
-            intent=result.get('intent'),
-            proposed_actions=[
-                ProposedAction(**action)
-                for action in result.get('proposed_actions', [])
-            ],
-            requires_clarification=result.get('requires_clarification', False),
-            clarification_question=result.get('clarification_question')
+            conversation_id=str(conversation_id),
+            blocks=blocks
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error processing conversation: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process conversation: {str(e)}"
+        # Return error block instead of raising exception
+        # This allows the frontend to display the error gracefully
+        conversation_id = conversation_id if 'conversation_id' in locals() else UUID('00000000-0000-0000-0000-000000000000')
+        return AgentProcessResponse(
+            conversation_id=str(conversation_id),
+            blocks=[ErrorBlock(
+                type="error",
+                message=f"Something went wrong: {str(e)}"
+            )]
         )
 
 
@@ -178,7 +205,7 @@ async def confirm_actions(
 
         # Execute actions (A→R)
         result = await agent.execute_actions(
-            conversation_id=request.conversation_id,
+            conversation_id=UUID(request.conversation_id),
             user_id=UUID(current_user['id']),
             action_ids=request.action_ids,
             action_plan=action_plan

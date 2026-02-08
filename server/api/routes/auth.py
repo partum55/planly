@@ -7,9 +7,11 @@ from api.schemas.request_schemas import (
     RegisterRequest,
     LoginRequest,
     RefreshTokenRequest,
+    GoogleOAuthCallbackRequest,
     LinkTelegramRequest
 )
 from api.schemas.response_schemas import TokenResponse, UserResponse
+import httpx
 from api.middleware.auth_middleware import get_current_user
 from database.client import get_supabase
 from database.repositories.user_repo import UserRepository
@@ -34,7 +36,7 @@ async def register(request: RegisterRequest):
         )
 
         return TokenResponse(
-            user_id=UUID(user['id']),
+            user_id=str(user['id']),
             access_token=access_token,
             refresh_token=refresh_token
         )
@@ -60,7 +62,7 @@ async def login(request: LoginRequest):
         )
 
         return TokenResponse(
-            user_id=UUID(user['id']),
+            user_id=str(user['id']),
             access_token=access_token,
             refresh_token=refresh_token
         )
@@ -94,19 +96,107 @@ async def refresh_token(request: RefreshTokenRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Token refresh failed")
 
 
-@router.post("/link-telegram")
-async def link_telegram(
-    request: LinkTelegramRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """Link Telegram account to user"""
+@router.post("/google/callback", response_model=TokenResponse)
+async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
+    """
+    Google OAuth callback - exchanges authorization code for tokens
+
+    Desktop app flow:
+    1. Opens Google OAuth consent window
+    2. Captures authorization code
+    3. POSTs code to this endpoint
+    4. Receives JWT tokens
+    """
     try:
+        from config.settings import settings
+
+        # Exchange code for Google access token
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "code": request.code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": "http://localhost:8000/auth/google/callback",
+            "grant_type": "authorization_code"
+        }
+
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(token_url, data=token_data)
+            token_response.raise_for_status()
+            tokens = token_response.json()
+
+            # Fetch user info from Google
+            userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+            headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+            userinfo_response = await client.get(userinfo_url, headers=headers)
+            userinfo_response.raise_for_status()
+            user_info = userinfo_response.json()
+
+        # Find or create user
         supabase = get_supabase()
         user_repo = UserRepository(supabase)
         auth_service = AuthService(user_repo)
 
+        user = await user_repo.get_user_by_email(user_info['email'])
+
+        if not user:
+            # Create new user
+            user, access_token, refresh_token = await auth_service.register_user(
+                email=user_info['email'],
+                password=None,  # No password for OAuth users
+                full_name=user_info.get('name')
+            )
+        else:
+            # Existing user - generate tokens
+            access_token, refresh_token = await auth_service.generate_tokens(UUID(user['id']))
+
+        return TokenResponse(
+            user_id=str(user['id']),
+            access_token=access_token,
+            refresh_token=refresh_token
+        )
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Google OAuth error: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid authorization code")
+    except Exception as e:
+        logger.error(f"Google OAuth callback error: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="OAuth authentication failed")
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_profile(current_user: dict = Depends(get_current_user)):
+    """
+    Get current user profile (validates bearer token)
+    Useful for 'Logged in as...' UI
+    """
+    return UserResponse(
+        user_id=str(current_user['id']),
+        email=current_user['email'],
+        full_name=current_user.get('full_name'),
+        avatar_url=current_user.get('avatar_url')
+    )
+
+
+@router.post("/link-telegram")
+async def link_telegram(request: LinkTelegramRequest):
+    """
+    Link Telegram account to user (no auth required per AGENT_1_TASKS spec)
+    Telegram bot /link command uses this
+    """
+    try:
+        supabase = get_supabase()
+        user_repo = UserRepository(supabase)
+
+        # Find user by email
+        user = await user_repo.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found with that email")
+
+        # Link Telegram account
+        auth_service = AuthService(user_repo)
         success = await auth_service.link_telegram_account(
-            user_id=UUID(current_user['id']),
+            user_id=UUID(user['id']),
             telegram_id=request.telegram_id,
             telegram_username=request.telegram_username
         )
@@ -114,10 +204,15 @@ async def link_telegram(
         if not success:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to link Telegram account")
 
-        return {"success": True, "message": "Telegram account linked successfully"}
+        return {
+            "success": True,
+            "user_id": str(user['id'])
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Link Telegram error: {e}")
+        logger.error(f"Link Telegram error: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to link Telegram account")
 
 
