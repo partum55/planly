@@ -1,0 +1,155 @@
+"""Context Manager - maintains rolling conversation window"""
+from datetime import datetime, timedelta, timezone
+from typing import List
+from uuid import UUID
+import logging
+
+from models.message import Message, ConversationContext
+from database.repositories.conversation_repo import ConversationRepository
+
+logger = logging.getLogger(__name__)
+
+
+class ContextManager:
+    """
+    Manages conversation context:
+    - Maintains rolling 1-hour window
+    - Detects consent signals
+    - Extracts time references
+    """
+
+    def __init__(
+        self,
+        conversation_repo: ConversationRepository,
+        window_minutes: int = 60
+    ):
+        self.conversation_repo = conversation_repo
+        self.window_minutes = window_minutes
+
+        # Consent detection keywords
+        self.accept_keywords = [
+            'yes', 'sure', "i'm in", 'count me in', '+1',
+            'sounds good', 'im in', 'yeah', 'ok', 'okay',
+            'definitely', 'absolutely', 'for sure'
+        ]
+
+        self.decline_keywords = [
+            'no', "can't", 'cannot', 'not available', '-1',
+            'sorry', 'unable', "won't make it", 'busy',
+            'have plans', 'pass'
+        ]
+
+    async def add_message(self, conversation_id: UUID, message_data: dict):
+        """Store a new message"""
+        await self.conversation_repo.insert_message(conversation_id, message_data)
+
+    async def get_context(self, conversation_id: UUID) -> ConversationContext:
+        """
+        Get conversation context for the rolling window
+
+        Returns structured context with:
+        - messages (last hour)
+        - consent signals
+        - time references
+        """
+        # Get messages from last hour
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=self.window_minutes)
+        messages_data = await self.conversation_repo.get_messages_since(
+            conversation_id, cutoff_time
+        )
+
+        # Convert to Message models
+        messages = []
+        for msg_data in messages_data:
+            messages.append(Message(
+                message_id=msg_data.get('message_id'),
+                user_id=msg_data.get('user_id'),
+                username=msg_data.get('username'),
+                first_name=msg_data.get('first_name'),
+                last_name=msg_data.get('last_name'),
+                text=msg_data['text'],
+                timestamp=datetime.fromisoformat(msg_data['timestamp'].replace('Z', '+00:00')),
+                source=msg_data.get('source', 'telegram'),
+                is_bot_mention=msg_data.get('is_bot_mention', False)
+            ))
+
+        # Build context
+        context = ConversationContext(
+            messages=messages,
+            participants=self._extract_participants(messages),
+            consent_signals=self._detect_consent_signals(messages),
+            time_references=self._extract_time_references(messages),
+            mention_message=self._get_mention_message(messages)
+        )
+
+        return context
+
+    def _extract_participants(self, messages: List[Message]) -> dict:
+        """Extract unique participants from messages"""
+        participants = {}
+
+        for msg in messages:
+            if msg.user_id and msg.user_id not in participants:
+                participants[msg.user_id] = {
+                    'user_id': msg.user_id,
+                    'username': msg.username,
+                    'first_name': msg.first_name,
+                    'last_name': msg.last_name
+                }
+
+        return participants
+
+    def _detect_consent_signals(self, messages: List[Message]) -> dict:
+        """Detect who agreed or declined"""
+        consent_signals = {}
+
+        for msg in messages:
+            if not msg.user_id:
+                continue
+
+            text_lower = msg.text.lower()
+
+            # Check for acceptance
+            if any(keyword in text_lower for keyword in self.accept_keywords):
+                consent_signals[msg.user_id] = 'accepted'
+
+            # Check for decline (overrides acceptance)
+            elif any(keyword in text_lower for keyword in self.decline_keywords):
+                consent_signals[msg.user_id] = 'declined'
+
+        return consent_signals
+
+    def _extract_time_references(self, messages: List[Message]) -> List[str]:
+        """Extract time-related phrases from messages"""
+        time_keywords = [
+            'tomorrow', 'today', 'tonight', 'this evening',
+            'next week', 'next month', 'monday', 'tuesday',
+            'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+            'am', 'pm', 'morning', 'afternoon', 'evening', 'night'
+        ]
+
+        time_refs = []
+
+        for msg in messages:
+            text_lower = msg.text.lower()
+            for keyword in time_keywords:
+                if keyword in text_lower:
+                    # Extract the sentence containing the time reference
+                    sentences = msg.text.split('.')
+                    for sentence in sentences:
+                        if keyword in sentence.lower():
+                            time_refs.append(sentence.strip())
+                            break
+
+        return list(set(time_refs))  # Remove duplicates
+
+    def _get_mention_message(self, messages: List[Message]) -> str:
+        """Get the message that mentioned the bot"""
+        for msg in reversed(messages):
+            if msg.is_bot_mention:
+                return msg.text
+        return ""
+
+    async def cleanup_old_messages(self, conversation_id: UUID):
+        """Remove messages older than the window"""
+        await self.conversation_repo.cleanup_old_messages(conversation_id)
