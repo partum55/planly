@@ -8,9 +8,9 @@
 
 ---
 
-## 🎯 Get Running in 15 Minutes
+## 🎯 Get Running Quickly
 
-### Quick Setup (2 commands - Cloud LLM)
+### Quick Setup (Cloud LLM)
 
 ```bash
 # 1. Set up Supabase (follow prompts)
@@ -18,7 +18,7 @@
 
 # 2. Get Cloud LLM API key
 # See CLOUD_LLM_SETUP.md for detailed instructions
-# Recommended: Groq (free, fast) or Together AI ($25 free credits)
+# Recommended: Groq (free, fast) or Together AI (free credits available)
 # Update .env with your API key
 
 # 3. Start server
@@ -138,12 +138,13 @@ To run the server, you MUST have:
 
 3. **✓ LLM API Access**
 
-   **Option A: Cloud API (Recommended for Hackathon)**
-   - Get free API key from Groq or Together AI
+   **Option A: Cloud API (Recommended)**
+   - Get API key from Groq or Together AI (free tiers available)
    - See `CLOUD_LLM_SETUP.md` for detailed guide
    - No local installation needed!
 
    **Option B: Local Ollama**
+
    ```bash
    ollama serve  # In one terminal
    ollama pull llama3.1:8b  # Downloads model
@@ -214,8 +215,10 @@ Once your server is running:
 ## 🎉 You're Almost There!
 
 The hard part (coding) is done. Now just:
-1. Create Supabase project (10 min)
-2. Configure & start (5 min)
-3. Start building clients!
+
+1. Create Supabase project
+2. Get LLM API key
+3. Configure & start server
+4. Start building clients!
 
 **Ready? Open:** `SUPABASE_SETUP_CHECKLIST.md`

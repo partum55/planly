@@ -13,16 +13,15 @@ The Planly backend now supports **cloud-based LLM APIs** instead of requiring lo
 
 ## 🎯 Recommended Providers
 
-### 1. **Together AI** (Recommended for Hackathon)
+### 1. **Together AI** (Recommended)
 **Best for:** Good balance of speed, cost, and reliability
 
 #### Setup:
 1. Go to https://api.together.xyz/
-2. Sign up for free account
-3. Get $25 free credits (no credit card required)
-4. Go to **Settings → API Keys**
-5. Create new API key
-6. Copy the key
+2. Sign up for free account (free credits available for new users)
+3. Go to **Settings → API Keys**
+4. Create new API key
+5. Copy the key
 
 #### Configuration:
 ```bash
@@ -32,20 +31,23 @@ OLLAMA_MODEL=meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo
 LLM_API_KEY=your_together_ai_key_here
 ```
 
-**Pricing:** ~$0.20 per 1M tokens (very cheap for hackathon)
+**Pricing:** Pay-per-token pricing (check current rates on their website)
 
 ---
 
 ### 2. **Groq** (Fastest Option)
-**Best for:** Maximum speed - 10x faster than others!
+
+**Best for:** Maximum speed - optimized inference hardware!
 
 #### Setup:
+
 1. Go to https://console.groq.com/
 2. Sign up with Google/GitHub
-3. Get free API key (generous free tier)
+3. Get free API key (check their current free tier limits)
 4. Copy API key from dashboard
 
 #### Configuration:
+
 ```bash
 USE_CLOUD_LLM=true
 OLLAMA_ENDPOINT=https://api.groq.com/openai
@@ -53,19 +55,22 @@ OLLAMA_MODEL=llama-3.1-8b-instant
 LLM_API_KEY=your_groq_key_here
 ```
 
-**Pricing:** Free tier includes 14,400 requests/day
+**Pricing:** Free tier available (check their website for current limits)
 
 ---
 
 ### 3. **OpenRouter** (Most Options)
+
 **Best for:** Access to many different models
 
 #### Setup:
+
 1. Go to https://openrouter.ai/
-2. Sign up and add credits ($5 minimum)
+2. Sign up and add credits (check minimum deposit requirement)
 3. Get API key from **Keys** section
 
 #### Configuration:
+
 ```bash
 USE_CLOUD_LLM=true
 OLLAMA_ENDPOINT=https://openrouter.ai/api
@@ -78,13 +83,15 @@ LLM_API_KEY=your_openrouter_key_here
 ## 🚀 Quick Start
 
 ### Step 1: Choose a Provider
-Pick one from above (we recommend **Groq** for free and fast, or **Together AI** for best hackathon experience)
+
+Pick one from above (we recommend **Groq** for free and fast, or **Together AI** for best overall experience)
 
 ### Step 2: Get API Key
 Follow the setup instructions for your chosen provider
 
 ### Step 3: Update `.env` File
-Edit `/windows/E/Programming/Hackathon/SoftServe/planly/server/.env`:
+
+Edit `server/.env`:
 
 ```bash
 # LLM Configuration - Cloud API
@@ -118,23 +125,23 @@ Visit http://localhost:8000/docs and try the `/agent/process` endpoint!
 - OpenRouter: `meta-llama/llama-3.1-8b-instruct`
 
 ### Rate limit errors
-- Groq free tier: 14,400 requests/day
-- Together AI: $25 free credits
-- Add billing if you hit limits
+- Check your provider's current rate limits on their dashboard
+- Free tiers have daily/monthly limits
+- Add billing or upgrade your plan if you hit limits
 
 ---
 
-## 💡 Cost Estimates (for Hackathon)
+## 💡 Cost Information
 
-Assuming 1000 requests during hackathon weekend:
+All providers offer competitive pricing for development and production use:
 
-| Provider | Cost | Free Tier |
-|----------|------|-----------|
-| **Groq** | $0 | 14,400 requests/day |
-| **Together AI** | ~$2-5 | $25 free credits |
-| **OpenRouter** | ~$3-7 | Pay as you go |
+| Provider | Free Tier | Pricing Model |
+|----------|-----------|---------------|
+| **Groq** | Yes - generous daily limits | Free tier available |
+| **Together AI** | Yes - free credits for new users | Pay per token |
+| **OpenRouter** | Varies by model | Pay as you go |
 
-**Recommendation:** Start with Groq (free), switch to Together AI if you hit limits.
+**Recommendation:** Start with Groq (free tier), or use Together AI for higher limits. Check each provider's website for current pricing and limits.
 
 ---
 

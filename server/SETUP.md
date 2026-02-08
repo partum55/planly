@@ -4,8 +4,8 @@
 
 - Python 3.10 or higher
 - Supabase account
-- Ollama installed
-- Google Cloud project (for Calendar API)
+- LLM API access (Cloud API or local Ollama)
+- Google Cloud project (optional, for Calendar API)
 
 ---
 
@@ -59,9 +59,34 @@ pip install -r requirements.txt
 
 ---
 
-## Step 3: Ollama Setup
+## Step 3: LLM Setup
 
-### 3.1 Install Ollama
+### Option A: Cloud API (Recommended)
+
+Fastest and easiest setup - no local installation needed!
+
+1. Choose a provider:
+   - **Groq**: Free tier, very fast
+   - **Together AI**: Free credits, good reliability
+   - **OpenRouter**: Many model options
+
+2. Get your API key:
+   - See `CLOUD_LLM_SETUP.md` for detailed instructions
+
+3. Configure in `.env`
+
+```bash
+USE_CLOUD_LLM=true
+OLLAMA_ENDPOINT=https://api.groq.com/openai  # or together.xyz, openrouter.ai
+OLLAMA_MODEL=llama-3.1-8b-instant
+LLM_API_KEY=your_api_key_here
+```
+
+### Option B: Local Ollama
+
+**For offline use or custom models**
+
+#### 3.1 Install Ollama
 
 ```bash
 # Linux/Mac:
@@ -70,7 +95,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 # Windows: Download from https://ollama.com/download
 ```
 
-### 3.2 Pull Model
+#### 3.2 Pull Model
 
 ```bash
 ollama pull llama3.1:8b
@@ -79,12 +104,20 @@ ollama pull llama3.1:8b
 ollama run llama3.1:8b "Hello, how are you?"
 ```
 
-### 3.3 Keep Ollama Running
+#### 3.3 Keep Ollama Running
 
 Ollama should be running in the background. If not:
 
 ```bash
 ollama serve
+```
+
+#### 3.4 Configure in `.env`
+
+```bash
+USE_CLOUD_LLM=false
+OLLAMA_ENDPOINT=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
 ```
 
 ---
@@ -140,11 +173,13 @@ cp .env.example .env
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_KEY=your_service_role_key_here
 
-# Ollama
-OLLAMA_ENDPOINT=http://localhost:11434
-OLLAMA_MODEL=llama3.1:8b
+# LLM Configuration
+USE_CLOUD_LLM=true  # Set to false for local Ollama
+OLLAMA_ENDPOINT=https://api.groq.com/openai  # or local: http://localhost:11434
+OLLAMA_MODEL=llama-3.1-8b-instant  # or local: llama3.1:8b
+LLM_API_KEY=your_api_key_here  # Leave empty for local Ollama
 
-# Google Calendar
+# Google Calendar (Optional)
 GOOGLE_CALENDAR_ID=your_calendar_id@group.calendar.google.com
 GOOGLE_SERVICE_ACCOUNT_FILE=./integrations/google_calendar/service_account.json
 
@@ -182,7 +217,7 @@ You should see:
 ╠════════════════════════════════════════╣
 ║  Address: http://0.0.0.0:8000          ║
 ║  Docs: http://0.0.0.0:8000/docs        ║
-║  LLM: llama3.1:8b                      ║
+║  LLM: [your configured model]          ║
 ╚════════════════════════════════════════╝
 ```
 
@@ -234,12 +269,12 @@ curl -X POST http://localhost:8000/agent/process \
         {
           "username": "Alice",
           "text": "Lets grab dinner tomorrow at 7pm",
-          "timestamp": "2026-02-08T18:00:00Z"
+          "timestamp": "2025-03-15T18:00:00Z"
         },
         {
           "username": "Bob",
           "text": "Im in! Italian sounds good",
-          "timestamp": "2026-02-08T18:01:00Z"
+          "timestamp": "2025-03-15T18:01:00Z"
         }
       ]
     }
@@ -258,7 +293,19 @@ You should get back proposed actions!
 - Verify network connection
 - Check if Supabase project is active
 
-### Ollama Not Working
+### LLM Not Working
+
+#### For Cloud API
+
+```bash
+# Check your .env settings
+cat server/.env | grep -E "USE_CLOUD_LLM|LLM_API_KEY"
+
+# Verify API key is valid on provider's dashboard
+# Check rate limits haven't been exceeded
+```
+
+#### For Local Ollama
 
 ```bash
 # Check if Ollama is running
@@ -330,7 +377,7 @@ python main.py
 # Install dependencies
 pip install -r requirements.txt
 
-# Check Ollama
+# Check LLM (for local Ollama)
 ollama list
 
 # Test health
