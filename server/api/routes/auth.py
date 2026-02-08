@@ -10,7 +10,7 @@ from api.schemas.request_schemas import (
     GoogleOAuthCallbackRequest,
     LinkTelegramRequest
 )
-from api.schemas.response_schemas import TokenResponse, UserResponse
+from api.schemas.response_schemas import TokenResponse, UserResponse, UserProfileResponse
 import httpx
 from api.middleware.auth_middleware import get_current_user
 from database.client import get_supabase
@@ -216,13 +216,13 @@ async def link_telegram(request: LinkTelegramRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to link Telegram account")
 
 
-@router.get("/verify", response_model=UserResponse)
+@router.get("/verify")
 async def verify_token(current_user: dict = Depends(get_current_user)):
-    """Verify token and return user info"""
-    return UserResponse(
-        id=UUID(current_user['id']),
-        email=current_user['email'],
-        full_name=current_user.get('full_name'),
-        telegram_id=current_user.get('telegram_id'),
-        telegram_username=current_user.get('telegram_username')
-    )
+    """Verify token and return user info (legacy endpoint, use /auth/me instead)"""
+    return {
+        "id": current_user['id'],
+        "email": current_user['email'],
+        "full_name": current_user.get('full_name'),
+        "telegram_id": current_user.get('telegram_id'),
+        "telegram_username": current_user.get('telegram_username')
+    }

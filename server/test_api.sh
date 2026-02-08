@@ -77,6 +77,7 @@ response=$(curl -s -X POST "$BASE_URL/agent/process" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -d '{
+    "user_prompt": "Schedule dinner tomorrow at 7pm",
     "source": "desktop_screenshot",
     "context": {
       "messages": [
@@ -99,7 +100,7 @@ response=$(curl -s -X POST "$BASE_URL/agent/process" \
     }
   }')
 
-if echo "$response" | grep -q "intent"; then
+if echo "$response" | grep -q "blocks"; then
     echo -e "${GREEN}✓ Agent processing successful${NC}"
     echo "  Response:"
     echo "$response" | python3 -m json.tool 2>/dev/null || echo "$response"
