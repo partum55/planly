@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planly</title>
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ─── Container ────────────────────────────────────── */
+    .container {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      height: 100vh;
+      padding: 8px;
+    }
+
+    .chat-box {
+      background: #1a1a2e;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      box-shadow:
+        0 24px 48px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: calc(100vh - 16px);
+      backdrop-filter: blur(24px);
+    }
+
+    /* ─── Messages Area ────────────────────────────────── */
+    .messages {
+      display: none; /* hidden when empty */
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 16px 8px;
+      scroll-behavior: smooth;
+    }
+
+    .messages.has-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+    /* ─── Message Bubbles ──────────────────────────────── */
+    .msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      word-wrap: break-word;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: #6c5ce7;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.agent {
+      align-self: flex-start;
+      background: #2d2d44;
+      color: #e0e0e0;
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg.agent .typing-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .msg.agent .typing-dots span {
+      width: 6px;
+      height: 6px;
+      background: #888;
+      border-radius: 50%;
+      animation: blink 1.4s infinite both;
+    }
+    .msg.agent .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .msg.agent .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.3; }
+      40% { opacity: 1; }
+    }
+
+    /* ─── Action Cards ─────────────────────────────────── */
+    .action-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .action-card {
+      background: #2d2d44;
+      border: 1px solid rgba(108, 92, 231, 0.3);
+      border-radius: 10px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .action-card:hover {
+      border-color: #6c5ce7;
+      background: #363650;
+    }
+
+    .action-card.selected {
+      border-color: #6c5ce7;
+      background: rgba(108, 92, 231, 0.15);
+    }
+
+    .action-card .check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+
+    .action-card.selected .check {
+      background: #6c5ce7;
+      border-color: #6c5ce7;
+    }
+
+    .action-card.selected .check::after {
+      content: '';
+      width: 6px;
+      height: 10px;
+      border: solid #fff;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+      margin-bottom: 2px;
+    }
+
+    .action-card .info {
+      flex: 1;
+    }
+
+    .action-card .tool-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #a29bfe;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .action-card .desc {
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    /* ─── Confirm Bar ──────────────────────────────────── */
+    .confirm-bar {
+      display: none;
+      padding: 8px 16px 12px;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .confirm-bar.visible {
+      display: flex;
+    }
+
+    .confirm-bar button {
+      padding: 8px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-confirm {
+      background: #6c5ce7;
+      color: #fff;
+    }
+    .btn-confirm:hover { background: #5a4bd1; }
+
+    .btn-cancel {
+      background: rgba(255,255,255,0.06);
+      color: #aaa;
+    }
+    .btn-cancel:hover { background: rgba(255,255,255,0.1); }
+
+    /* ─── Calendar Picker ──────────────────────────────── */
+    .picker-container {
+      background: #2d2d44;
+      border-radius: 10px;
+      padding: 12px;
+      width: 100%;
+    }
+
+    .picker-container label {
+      display: block;
+      font-size: 12px;
+      color: #a29bfe;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .picker-container input {
+      width: 100%;
+      padding: 8px 12px;
+      background: #1a1a2e;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .picker-container input:focus {
+      border-color: #6c5ce7;
+    }
+
+    .picker-submit {
+      margin-top: 8px;
+      padding: 6px 14px;
+      background: #6c5ce7;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* ─── Result Items ─────────────────────────────────── */
+    .result-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .result-item.success {
+      background: rgba(0, 210, 106, 0.12);
+      color: #00d26a;
+    }
+
+    .result-item.failure {
+      background: rgba(255, 71, 87, 0.12);
+      color: #ff4757;
+    }
+
+    /* ─── Input Area ───────────────────────────────────── */
+    .input-area {
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .screenshot-btn {
+      width: 34px;
+      height: 34px;
+      background: rgba(255,255,255,0.06);
+      border: none;
+      border-radius: 8px;
+      color: #888;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+
+    .screenshot-btn:hover {
+      background: rgba(108, 92, 231, 0.2);
+      color: #a29bfe;
+    }
+
+    .input-area input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #e0e0e0;
+      font-size: 14px;
+      outline: none;
+      padding: 8px 0;
+    }
+
+    .input-area input::placeholder {
+      color: #555;
+    }
+
+    .send-btn {
+      width: 34px;
+      height: 34px;
+      background: #6c5ce7;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .send-btn.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .send-btn.active:hover {
+      background: #5a4bd1;
+    }
+
+    /* ─── Esc hint ─────────────────────────────────────── */
+    .esc-hint {
+      text-align: center;
+      font-size: 10px;
+      color: #444;
+      padding: 0 0 6px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="chat-box">
+    <div class="messages" id="messages"></div>
+    <div class="confirm-bar" id="confirmBar">
+      <button class="btn-cancel" id="btnCancelActions">Cancel</button>
+      <button class="btn-confirm" id="btnConfirmActions">Confirm</button>
+    </div>
+    <div class="input-area">
+      <button class="screenshot-btn" id="btnScreenshot" title="Take screenshot">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+      </button>
+      <input type="text" id="inputField" placeholder="Type a command... e.g. 'appoint dinner'" autofocus />
+      <button class="send-btn" id="btnSend">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <div class="esc-hint">Esc to close</div>
+  </div>
+</div>
+
+<script>
+  // ─── State ──────────────────────────────────────────────
+  const WEBSERVER_URL = 'http://localhost:8000';
+  let conversationId = null;
+  let selectedActionIds = new Set();
+  let currentActions = [];
+  let lastScreenshot = null;
+  let isProcessing = false;
+
+  // ─── DOM refs ───────────────────────────────────────────
+  const messagesEl = document.getElementById('messages');
+  const inputField = document.getElementById('inputField');
+  const btnSend = document.getElementById('btnSend');
+  const btnScreenshot = document.getElementById('btnScreenshot');
+  const confirmBar = document.getElementById('confirmBar');
+  const btnConfirmActions = document.getElementById('btnConfirmActions');
+  const btnCancelActions = document.getElementById('btnCancelActions');
+
+  // ─── Planly bridge (from preload) ──────────────────────
+  const planly = window.planly;
+
+  // ─── Input handling ────────────────────────────────────
+  inputField.addEventListener('input', () => {
+    btnSend.classList.toggle('active', inputField.value.trim().length > 0);
+  });
+
+  inputField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && inputField.value.trim()) {
+      handleSend();
+    }
+  });
+
+  // Global Esc to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (window.planly) {
+        window.planly.closeChat();
+      }
+    }
+  });
+
+  btnSend.addEventListener('click', () => {
+    if (inputField.value.trim()) handleSend();
+  });
+
+  // ─── Screenshot button ─────────────────────────────────
+  btnScreenshot.addEventListener('click', async () => {
+    btnScreenshot.style.color = '#6c5ce7';
+    try {
+      lastScreenshot = await planly.takeScreenshot();
+      btnScreenshot.style.color = '#00d26a';
+      setTimeout(() => { btnScreenshot.style.color = ''; }, 1500);
+    } catch (err) {
+      btnScreenshot.style.color = '#ff4757';
+      setTimeout(() => { btnScreenshot.style.color = ''; }, 1500);
+    }
+  });
+
+  // ─── Confirm / Cancel actions ──────────────────────────
+  btnConfirmActions.addEventListener('click', () => handleConfirmActions());
+  btnCancelActions.addEventListener('click', () => {
+    selectedActionIds.clear();
+    confirmBar.classList.remove('visible');
+    document.querySelectorAll('.action-card').forEach(c => c.classList.remove('selected'));
+  });
+
+  // ─── Reset on toggle ───────────────────────────────────
+  planly.resetChat(() => {
+    conversationId = null;
+    selectedActionIds.clear();
+    currentActions = [];
+    lastScreenshot = null;
+    isProcessing = false;
+    messagesEl.innerHTML = '';
+    messagesEl.classList.remove('has-messages');
+    confirmBar.classList.remove('visible');
+    inputField.value = '';
+    btnSend.classList.remove('active');
+    requestResize();
+  });
+
+  // ─── Core: Send message ─────────────────────────────────
+  async function handleSend() {
+    if (isProcessing) return;
+    const text = inputField.value.trim();
+    if (!text) return;
+
+    inputField.value = '';
+    btnSend.classList.remove('active');
+
+    addMessage('user', text);
+
+    // If no screenshot taken yet, take one automatically
+    if (!lastScreenshot) {
+      addTypingIndicator();
+      try {
+        lastScreenshot = await planly.takeScreenshot();
+      } catch (err) {
+        removeTypingIndicator();
+        addMessage('agent', 'Failed to capture screenshot. Please try the camera button manually.');
+        return;
+      }
+    }
+
+    // OCR the screenshot
+    if (!isProcessing) {
+      isProcessing = true;
+      if (!document.querySelector('.typing-indicator')) {
+        addTypingIndicator();
+      }
+
+      try {
+        // We send the raw screenshot to the backend — OCR happens server-side
+        // or we do client-side OCR. Per spec, client does OCR.
+        const ocrResult = await doOCR(lastScreenshot.imageBase64);
+
+        const response = await callAgentProcess({
+          conversation_id: conversationId,
+          user_prompt: text,
+          messages: ocrResult.messages,
+          screenshot_metadata: {
+            ocr_confidence: ocrResult.confidence,
+            raw_text: ocrResult.rawText,
+          },
+        });
+
+        removeTypingIndicator();
+
+        conversationId = response.conversation_id;
+        renderBlocks(response.blocks);
+
+      } catch (err) {
+        removeTypingIndicator();
+        addMessage('agent', 'Something went wrong. Please try again.');
+        console.error(err);
+      } finally {
+        isProcessing = false;
+      }
+    }
+  }
+
+  // ─── OCR (Tesseract in renderer) ───────────────────────
+  // Dynamically load tesseract.js
+  let Tesseract = null;
+
+  async function doOCR(imageBase64) {
+    if (!Tesseract) {
+      // tesseract.js loaded via CDN for renderer process
+      Tesseract = await loadTesseract();
+    }
+
+    const { data } = await Tesseract.recognize(
+      'data:image/png;base64,' + imageBase64,
+      'eng'
+    );
+
+    return {
+      rawText: data.text,
+      confidence: data.confidence,
+      messages: parseMessages(data.text),
+    };
+  }
+
+  function loadTesseract() {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.onload = () => resolve(window.Tesseract);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  // ─── Message parser (generic multi-app) ─────────────────
+  function parseMessages(text) {
+    const lines = text.split('\n').filter(l => l.trim());
+    const strategies = [parseColon, parseBracketTime, parseWhatsApp];
+
+    let best = [];
+    for (const fn of strategies) {
+      const r = fn(lines);
+      if (r.length > best.length) best = r;
+    }
+
+    if (best.length === 0 && text.trim()) {
+      best = [{ username: 'Unknown', text: text.trim(), timestamp: new Date().toISOString() }];
+    }
+    return best;
+  }
+
+  function parseColon(lines) {
+    const msgs = [];
+    const pat = /^([A-Za-z0-9_\s]{2,20}):\s+(.+)$/;
+    for (const l of lines) {
+      const m = l.match(pat);
+      if (m) msgs.push({ username: m[1].trim(), text: m[2].trim(), timestamp: new Date().toISOString() });
+    }
+    return msgs;
+  }
+
+  function parseBracketTime(lines) {
+    const msgs = [];
+    const pat = /^\[(\d{1,2}:\d{2}(?:\s*[APap][Mm])?)\]\s+([A-Za-z0-9_]+):\s+(.+)$/;
+    for (const l of lines) {
+      const m = l.match(pat);
+      if (m) msgs.push({ username: m[2].trim(), text: m[3].trim(), timestamp: m[1].trim() });
+    }
+    return msgs;
+  }
+
+  function parseWhatsApp(lines) {
+    const msgs = [];
+    const pat = /^([A-Za-z0-9_\s]+),\s*(\d{1,2}:\d{2}\s*[APap][Mm]):\s+(.+)$/;
+    for (const l of lines) {
+      const m = l.match(pat);
+      if (m) msgs.push({ username: m[1].trim(), text: m[3].trim(), timestamp: m[2].trim() });
+    }
+    return msgs;
+  }
+
+  // ─── API calls ──────────────────────────────────────────
+  async function callAgentProcess(params) {
+    const token = await planly.getToken();
+    const res = await fetch(WEBSERVER_URL + '/agent/process', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (token || ''),
+      },
+      body: JSON.stringify({
+        source: 'desktop_screenshot',
+        conversation_id: params.conversation_id,
+        user_prompt: params.user_prompt,
+        context: {
+          messages: params.messages,
+          screenshot_metadata: params.screenshot_metadata,
+        },
+      }),
+    });
+
+    if (!res.ok) throw new Error('API error: ' + res.status);
+    return await res.json();
+  }
+
+  async function callConfirmActions(convId, actionIds) {
+    const token = await planly.getToken();
+    const res = await fetch(WEBSERVER_URL + '/agent/confirm-actions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (token || ''),
+      },
+      body: JSON.stringify({
+        conversation_id: convId,
+        action_ids: actionIds,
+      }),
+    });
+
+    if (!res.ok) throw new Error('API error: ' + res.status);
+    return await res.json();
+  }
+
+  // ─── Confirm actions ────────────────────────────────────
+  async function handleConfirmActions() {
+    if (selectedActionIds.size === 0) return;
+
+    confirmBar.classList.remove('visible');
+    addTypingIndicator();
+
+    try {
+      const response = await callConfirmActions(
+        conversationId,
+        Array.from(selectedActionIds)
+      );
+
+      removeTypingIndicator();
+
+      for (const result of response.results) {
+        const el = document.createElement('div');
+        el.className = 'result-item ' + (result.success ? 'success' : 'failure');
+        el.textContent = (result.success ? '\u2713 ' : '\u2717 ') + (result.tool || '') + ': ' +
+          (result.success ? 'Done' : 'Failed');
+        messagesEl.appendChild(el);
+      }
+
+      if (response.formatted_response) {
+        addMessage('agent', response.formatted_response);
+      }
+
+      selectedActionIds.clear();
+      currentActions = [];
+      scrollToBottom();
+      requestResize();
+    } catch (err) {
+      removeTypingIndicator();
+      addMessage('agent', 'Failed to execute actions. Please try again.');
+      console.error(err);
+    }
+  }
+
+  // ─── Render response blocks ─────────────────────────────
+  function renderBlocks(blocks) {
+    if (!blocks || !blocks.length) return;
+
+    for (const block of blocks) {
+      switch (block.type) {
+        case 'text':
+          addMessage('agent', block.content);
+          break;
+
+        case 'action_cards':
+          renderActionCards(block.actions);
+          break;
+
+        case 'calendar_picker':
+          renderPicker('date', block.prompt);
+          break;
+
+        case 'time_picker':
+          renderPicker('time', block.prompt);
+          break;
+
+        case 'error':
+          addMessage('agent', block.message);
+          break;
+      }
+    }
+
+    scrollToBottom();
+    requestResize();
+  }
+
+  function renderActionCards(actions) {
+    currentActions = actions;
+    selectedActionIds.clear();
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'action-cards';
+
+    for (const action of actions) {
+      const card = document.createElement('div');
+      card.className = 'action-card';
+      card.dataset.actionId = action.action_id;
+      card.innerHTML = `
+        <div class="check"></div>
+        <div class="info">
+          <div class="tool-name">${escapeHtml(action.tool)}</div>
+          <div class="desc">${escapeHtml(action.description)}</div>
+        </div>
+      `;
+
+      card.addEventListener('click', () => {
+        card.classList.toggle('selected');
+        if (card.classList.contains('selected')) {
+          selectedActionIds.add(action.action_id);
+        } else {
+          selectedActionIds.delete(action.action_id);
+        }
+        confirmBar.classList.toggle('visible', selectedActionIds.size > 0);
+      });
+
+      wrapper.appendChild(card);
+    }
+
+    messagesEl.appendChild(wrapper);
+    messagesEl.classList.add('has-messages');
+    scrollToBottom();
+    requestResize();
+  }
+
+  function renderPicker(type, prompt) {
+    const container = document.createElement('div');
+    container.className = 'picker-container';
+
+    const inputType = type === 'date' ? 'date' : 'time';
+    container.innerHTML = `
+      <label>${escapeHtml(prompt)}</label>
+      <input type="${inputType}" class="picker-input" />
+      <button class="picker-submit">Set</button>
+    `;
+
+    const submitBtn = container.querySelector('.picker-submit');
+    const pickerInput = container.querySelector('.picker-input');
+
+    submitBtn.addEventListener('click', () => {
+      const val = pickerInput.value;
+      if (!val) return;
+      container.remove();
+      // Send the picked value as a user message
+      inputField.value = val;
+      handleSend();
+    });
+
+    messagesEl.appendChild(container);
+    messagesEl.classList.add('has-messages');
+    scrollToBottom();
+    requestResize();
+  }
+
+  // ─── Helpers ────────────────────────────────────────────
+  function addMessage(role, text) {
+    const el = document.createElement('div');
+    el.className = 'msg ' + role;
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    messagesEl.classList.add('has-messages');
+    scrollToBottom();
+    requestResize();
+  }
+
+  function addTypingIndicator() {
+    const el = document.createElement('div');
+    el.className = 'msg agent typing-indicator';
+    el.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+    messagesEl.appendChild(el);
+    messagesEl.classList.add('has-messages');
+    scrollToBottom();
+    requestResize();
+  }
+
+  function removeTypingIndicator() {
+    const el = document.querySelector('.typing-indicator');
+    if (el) el.remove();
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function requestResize() {
+    // Calculate needed height: chat-box content + padding
+    requestAnimationFrame(() => {
+      const chatBox = document.querySelector('.chat-box');
+      const contentHeight = chatBox.scrollHeight + 16; // 8px padding top+bottom
+      const minHeight = 72;
+      const needed = Math.max(minHeight, contentHeight);
+      planly.resizeChat(needed);
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ─── Initial focus ──────────────────────────────────────
+  inputField.focus();
+  requestResize();
+</script>
+
+</body>
+</html>
