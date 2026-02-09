@@ -43,9 +43,10 @@ jobs:
         run: npm run build:ts
 
       - name: Build installer
-        run: npx electron-builder --${{ matrix.platform }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+
+      - name: List build output
+        run: ls -lhR release/ || echo "No release directory found"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -55,7 +56,8 @@ jobs:
             desktop-app/release/*.AppImage
             desktop-app/release/*.dmg
             desktop-app/release/*.exe
-          if-no-files-found: warn
+            desktop-app/release/*.msi
+          if-no-files-found: error
 
   release:
     needs: build
@@ -69,11 +71,19 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: find artifacts/ -type f 2>/dev/null || ls -lhR artifacts/ || echo "No artifacts found"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/**/*.AppImage
+            artifacts/**/*.dmg
+            artifacts/**/*.exe
+            artifacts/**/*.msi
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
