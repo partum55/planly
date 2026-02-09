@@ -4,15 +4,65 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Planly</title>
+  <link rel="preconnect" href="https://api.fontshare.com">
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@700,800&display=swap" rel="stylesheet">
   <style>
+    /* ─── Tokens (matches landing page) ────────────────── */
+    :root {
+      --bg:          #0c0f16;
+      --bg-subtle:   #111419;
+      --surface:     #171b23;
+      --surface-hi:  #1e2330;
+      --border:      rgba(240, 237, 230, 0.06);
+      --border-hi:   rgba(240, 237, 230, 0.1);
+
+      --accent:      #e8654a;
+      --accent-dim:  rgba(232, 101, 74, 0.15);
+      --accent-hover:#d4563c;
+      --accent-2:    #f4a261;
+      --teal:        #4ecdc4;
+      --teal-dim:    rgba(78, 205, 196, 0.12);
+
+      --text:        #f0ede6;
+      --text-2:      #b0ada4;
+      --text-3:      #6b6e7a;
+
+      --success:     #4ecdc4;
+      --success-dim: rgba(78, 205, 196, 0.12);
+      --error:       #e8654a;
+      --error-dim:   rgba(232, 101, 74, 0.12);
+      --warning:     #f4a261;
+      --warning-dim: rgba(244, 162, 97, 0.12);
+
+      --font-display: 'Cabinet Grotesk', 'Satoshi', sans-serif;
+      --font-body:    'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+      --radius:      12px;
+      --radius-lg:   20px;
+    }
+
     /* ─── Reset & Base ─────────────────────────────────── */
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      font-family: var(--font-body);
       background: transparent;
       overflow: hidden;
       user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Grain overlay ────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-size: 200px;
     }
 
     /* ─── Container ────────────────────────────────────── */
@@ -26,12 +76,13 @@
 
     .chat-box {
       position: relative;
-      background: #1a1a2e;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-lg);
       box-shadow:
-        0 24px 48px rgba(0, 0, 0, 0.4),
-        0 0 0 1px rgba(255, 255, 255, 0.05);
+        0 24px 80px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.03),
+        0 0 80px rgba(232, 101, 74, 0.03);
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -41,11 +92,12 @@
 
     /* ─── Messages Area ────────────────────────────────── */
     .messages {
-      display: none; /* hidden when empty */
+      display: none;
       flex: 1;
       overflow-y: auto;
       padding: 16px 16px 8px;
       scroll-behavior: smooth;
+      position: relative;
     }
 
     .messages.has-messages {
@@ -56,52 +108,131 @@
 
     .messages::-webkit-scrollbar { width: 4px; }
     .messages::-webkit-scrollbar-track { background: transparent; }
-    .messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+    .messages::-webkit-scrollbar-thumb { background: rgba(240, 237, 230, 0.1); border-radius: 2px; }
 
     /* ─── Message Bubbles ──────────────────────────────── */
-    .msg {
+    .msg-wrapper {
+      display: flex;
+      flex-direction: column;
       max-width: 85%;
+      animation: fadeIn 0.3s ease;
+      position: relative;
+    }
+
+    .msg-wrapper.user { align-self: flex-end; }
+    .msg-wrapper.agent { align-self: flex-start; }
+
+    .msg {
       padding: 10px 14px;
-      border-radius: 12px;
-      font-size: 13px;
-      line-height: 1.5;
+      border-radius: var(--radius);
+      font-size: 13.5px;
+      line-height: 1.55;
       word-wrap: break-word;
-      animation: fadeIn 0.2s ease;
+      position: relative;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
+      from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .msg.user {
-      align-self: flex-end;
-      background: #6c5ce7;
+    .msg-wrapper.user .msg {
+      background: var(--accent);
       color: #fff;
       border-bottom-right-radius: 4px;
+      font-weight: 500;
     }
 
-    .msg.agent {
-      align-self: flex-start;
-      background: #2d2d44;
-      color: #e0e0e0;
+    .msg-wrapper.agent .msg {
+      background: var(--surface-hi);
+      color: var(--text-2);
       border-bottom-left-radius: 4px;
     }
 
-    .msg.agent .typing-dots {
+    /* ─── Copy Button ──────────────────────────────────── */
+    .msg-copy-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      background: rgba(0, 0, 0, 0.4);
+      border: none;
+      border-radius: 6px;
+      color: var(--text-3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s, color 0.15s;
+    }
+
+    .msg:hover .msg-copy-btn { opacity: 1; }
+    .msg-copy-btn:hover { color: var(--text); }
+
+    .msg-copy-btn.copied { color: var(--teal); }
+
+    /* ─── Message Timestamp ────────────────────────────── */
+    .msg-time {
+      font-size: 10px;
+      color: var(--text-3);
+      font-family: var(--font-mono);
+      margin-top: 3px;
+      opacity: 0.6;
+    }
+
+    .msg-wrapper.user .msg-time { text-align: right; }
+
+    /* ─── Markdown in agent messages ───────────────────── */
+    .msg strong { font-weight: 700; color: var(--text); }
+    .msg em { font-style: italic; }
+    .msg code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .msg pre {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 8px 10px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 6px 0;
+    }
+    .msg pre code {
+      background: none;
+      padding: 0;
+      font-size: 12px;
+    }
+    .msg a {
+      color: var(--teal);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .msg ul, .msg ol {
+      margin: 4px 0 4px 18px;
+    }
+    .msg li {
+      margin-bottom: 2px;
+    }
+
+    /* ─── Typing indicator (keep old styles working) ──── */
+    .msg .typing-dots {
       display: inline-flex;
       gap: 4px;
     }
 
-    .msg.agent .typing-dots span {
+    .msg .typing-dots span {
       width: 6px;
       height: 6px;
-      background: #888;
+      background: var(--text-3);
       border-radius: 50%;
       animation: blink 1.4s infinite both;
     }
-    .msg.agent .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-    .msg.agent .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    .msg .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .msg .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 
     @keyframes blink {
       0%, 80%, 100% { opacity: 0.3; }
@@ -117,42 +248,42 @@
     }
 
     .action-card {
-      background: #2d2d44;
-      border: 1px solid rgba(108, 92, 231, 0.3);
-      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius);
       padding: 12px;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s ease;
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
     .action-card:hover {
-      border-color: #6c5ce7;
-      background: #363650;
+      border-color: rgba(232, 101, 74, 0.3);
+      background: var(--surface-hi);
     }
 
     .action-card.selected {
-      border-color: #6c5ce7;
-      background: rgba(108, 92, 231, 0.15);
+      border-color: var(--accent);
+      background: var(--accent-dim);
     }
 
     .action-card .check {
       width: 20px;
       height: 20px;
-      border: 2px solid rgba(255,255,255,0.25);
+      border: 2px solid var(--text-3);
       border-radius: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      transition: all 0.15s;
+      transition: all 0.2s;
     }
 
     .action-card.selected .check {
-      background: #6c5ce7;
-      border-color: #6c5ce7;
+      background: var(--accent);
+      border-color: var(--accent);
     }
 
     .action-card.selected .check::after {
@@ -170,17 +301,18 @@
     }
 
     .action-card .tool-name {
-      font-size: 12px;
-      font-weight: 600;
-      color: #a29bfe;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 1.5px;
       margin-bottom: 2px;
+      font-family: var(--font-mono);
     }
 
     .action-card .desc {
       font-size: 13px;
-      color: #ccc;
+      color: var(--text-2);
     }
 
     /* ─── Confirm Bar ──────────────────────────────────── */
@@ -200,64 +332,76 @@
       border: none;
       border-radius: 8px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       transition: all 0.15s;
+      font-family: var(--font-body);
     }
 
     .btn-confirm {
-      background: #6c5ce7;
+      background: var(--accent);
       color: #fff;
     }
-    .btn-confirm:hover { background: #5a4bd1; }
+    .btn-confirm:hover { background: var(--accent-hover); }
 
     .btn-cancel {
-      background: rgba(255,255,255,0.06);
-      color: #aaa;
+      background: var(--surface);
+      color: var(--text-3);
+      border: 1px solid var(--border-hi);
     }
-    .btn-cancel:hover { background: rgba(255,255,255,0.1); }
+    .btn-cancel:hover { background: var(--surface-hi); color: var(--text-2); }
 
     /* ─── Calendar Picker ──────────────────────────────── */
     .picker-container {
-      background: #2d2d44;
-      border-radius: 10px;
-      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius);
+      padding: 14px;
       width: 100%;
     }
 
     .picker-container label {
       display: block;
-      font-size: 12px;
-      color: #a29bfe;
-      margin-bottom: 6px;
-      font-weight: 500;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--teal);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+      font-family: var(--font-mono);
     }
 
     .picker-container input {
       width: 100%;
       padding: 8px 12px;
-      background: #1a1a2e;
-      border: 1px solid rgba(255,255,255,0.1);
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
       border-radius: 8px;
-      color: #e0e0e0;
+      color: var(--text);
       font-size: 14px;
+      font-family: var(--font-body);
       outline: none;
+      transition: border-color 0.2s;
     }
 
     .picker-container input:focus {
-      border-color: #6c5ce7;
+      border-color: var(--teal);
     }
 
     .picker-submit {
       margin-top: 8px;
       padding: 6px 14px;
-      background: #6c5ce7;
-      color: #fff;
+      background: var(--teal);
+      color: var(--bg);
       border: none;
       border-radius: 6px;
       font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
+      font-family: var(--font-body);
+      transition: opacity 0.15s;
     }
+    .picker-submit:hover { opacity: 0.85; }
 
     /* ─── Result Items ─────────────────────────────────── */
     .result-item {
@@ -265,16 +409,17 @@
       border-radius: 8px;
       font-size: 13px;
       margin-top: 4px;
+      font-weight: 500;
     }
 
     .result-item.success {
-      background: rgba(0, 210, 106, 0.12);
-      color: #00d26a;
+      background: var(--success-dim);
+      color: var(--success);
     }
 
     .result-item.failure {
-      background: rgba(255, 71, 87, 0.12);
-      color: #ff4757;
+      background: var(--error-dim);
+      color: var(--error);
     }
 
     /* ─── Input Area ───────────────────────────────────── */
@@ -283,48 +428,109 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      border-top: 1px solid var(--border);
     }
 
     .screenshot-btn {
       width: 34px;
       height: 34px;
-      background: rgba(255,255,255,0.06);
-      border: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 8px;
-      color: #888;
+      color: var(--text-3);
       font-size: 16px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.15s;
+      transition: all 0.2s;
       flex-shrink: 0;
     }
 
     .screenshot-btn:hover {
-      background: rgba(108, 92, 231, 0.2);
-      color: #a29bfe;
+      background: var(--accent-dim);
+      border-color: rgba(232, 101, 74, 0.2);
+      color: var(--accent);
     }
+
+    .screenshot-btn:disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    /* ─── Screenshot Thumbnail ─────────────────────────── */
+    .screenshot-thumb {
+      position: relative;
+      flex-shrink: 0;
+      width: 48px;
+      height: 32px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border-hi);
+      animation: fadeIn 0.2s ease;
+    }
+
+    .screenshot-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .screenshot-thumb .thumb-remove {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 14px;
+      height: 14px;
+      background: var(--error);
+      border: none;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 9px;
+      line-height: 14px;
+      text-align: center;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    /* ─── OCR Confidence Badge ─────────────────────────── */
+    .ocr-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      animation: fadeIn 0.2s ease;
+      transition: opacity 0.3s;
+    }
+
+    .ocr-badge.green { background: var(--success-dim); color: var(--success); }
+    .ocr-badge.yellow { background: var(--warning-dim); color: var(--warning); }
+    .ocr-badge.red { background: var(--error-dim); color: var(--error); }
 
     .input-area input {
       flex: 1;
       background: transparent;
       border: none;
-      color: #e0e0e0;
+      color: var(--text);
       font-size: 14px;
+      font-family: var(--font-body);
       outline: none;
       padding: 8px 0;
     }
 
     .input-area input::placeholder {
-      color: #555;
+      color: var(--text-3);
+    }
+
+    .input-area input:disabled {
+      opacity: 0.5;
     }
 
     .send-btn {
       width: 34px;
       height: 34px;
-      background: #6c5ce7;
+      background: var(--accent);
       border: none;
       border-radius: 8px;
       color: #fff;
@@ -333,9 +539,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.15s;
+      transition: all 0.2s;
       flex-shrink: 0;
-      opacity: 0.4;
+      opacity: 0.3;
       pointer-events: none;
     }
 
@@ -345,15 +551,151 @@
     }
 
     .send-btn.active:hover {
-      background: #5a4bd1;
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(232, 101, 74, 0.3);
     }
+
+    .send-btn.processing {
+      opacity: 1;
+      pointer-events: none;
+      animation: pulseRing 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulseRing {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(232, 101, 74, 0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(232, 101, 74, 0); }
+    }
+
+    @keyframes spinSmall {
+      to { transform: rotate(360deg); }
+    }
+
+    .send-btn .spinner-icon {
+      animation: spinSmall 0.8s linear infinite;
+    }
+
+    /* ─── Retry Button ─────────────────────────────────── */
+    .retry-btn {
+      display: inline-block;
+      padding: 4px 12px;
+      margin-top: 6px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--font-body);
+      transition: background 0.15s;
+    }
+    .retry-btn:hover { background: var(--accent-hover); }
+
+    /* ─── Scroll-to-bottom pill ────────────────────────── */
+    .scroll-bottom-pill {
+      display: none;
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 5px 14px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-body);
+      cursor: pointer;
+      z-index: 50;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      animation: fadeIn 0.2s ease;
+    }
+
+    .scroll-bottom-pill.visible { display: block; }
 
     /* ─── Esc hint ─────────────────────────────────────── */
     .esc-hint {
       text-align: center;
       font-size: 10px;
-      color: #444;
+      color: var(--text-3);
       padding: 0 0 6px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.5px;
+      opacity: 0.5;
+    }
+
+    /* ─── Status bar (OCR badge area below input) ──────── */
+    .status-bar {
+      display: none;
+      padding: 0 12px 6px;
+      gap: 8px;
+      align-items: center;
+    }
+    .status-bar.visible { display: flex; }
+
+    /* ─── Keyboard Shortcut Overlay ────────────────────── */
+    .shortcut-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.15s ease;
+    }
+
+    .shortcut-overlay.visible {
+      display: flex;
+    }
+
+    .shortcut-card {
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-lg);
+      padding: 24px 28px;
+      min-width: 260px;
+    }
+
+    .shortcut-card h3 {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .shortcut-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+    }
+
+    .shortcut-row .key {
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-2);
+    }
+
+    .shortcut-row .action {
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    .shortcut-dismiss {
+      text-align: center;
+      font-size: 10px;
+      color: var(--text-3);
+      margin-top: 14px;
+      font-family: var(--font-mono);
     }
 
     /* ─── Drag Handle (title bar) ──────────────────────── */
@@ -364,7 +706,7 @@
       padding: 6px 0 2px;
       cursor: grab;
       user-select: none;
-      -webkit-app-region: no-drag; /* we handle dragging ourselves */
+      -webkit-app-region: no-drag;
       flex-shrink: 0;
     }
 
@@ -375,13 +717,13 @@
     .drag-handle .grip {
       width: 36px;
       height: 4px;
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--border-hi);
       border-radius: 2px;
       transition: background 0.15s;
     }
 
     .drag-handle:hover .grip {
-      background: rgba(255, 255, 255, 0.3);
+      background: var(--text-3);
     }
 
     /* ─── Resize Handles ───────────────────────────────── */
@@ -390,13 +732,11 @@
       z-index: 100;
     }
 
-    /* Edges */
     .resize-handle.rh-top    { top: -3px; left: 8px; right: 8px; height: 6px; cursor: n-resize; }
     .resize-handle.rh-bottom { bottom: -3px; left: 8px; right: 8px; height: 6px; cursor: s-resize; }
     .resize-handle.rh-left   { top: 8px; bottom: 8px; left: -3px; width: 6px; cursor: w-resize; }
     .resize-handle.rh-right  { top: 8px; bottom: 8px; right: -3px; width: 6px; cursor: e-resize; }
 
-    /* Corners */
     .resize-handle.rh-top-left     { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nw-resize; }
     .resize-handle.rh-top-right    { top: -3px; right: -3px; width: 12px; height: 12px; cursor: ne-resize; }
     .resize-handle.rh-bottom-left  { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: sw-resize; }
@@ -422,12 +762,14 @@
       <div class="grip"></div>
     </div>
 
-    <div class="messages" id="messages"></div>
+    <div class="messages" id="messages">
+      <button class="scroll-bottom-pill" id="scrollPill">&#8595; New messages</button>
+    </div>
     <div class="confirm-bar" id="confirmBar">
       <button class="btn-cancel" id="btnCancelActions">Cancel</button>
       <button class="btn-confirm" id="btnConfirmActions">Confirm</button>
     </div>
-    <div class="input-area">
+    <div class="input-area" id="inputArea">
       <button class="screenshot-btn" id="btnScreenshot" title="Take screenshot">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
@@ -436,12 +778,26 @@
       </button>
       <input type="text" id="inputField" placeholder="Type a command... e.g. 'appoint dinner'" autofocus />
       <button class="send-btn" id="btnSend">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <svg class="send-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
     </div>
-    <div class="esc-hint">Esc to close</div>
+    <div class="status-bar" id="statusBar"></div>
+    <div class="esc-hint">esc to close &middot; ? for shortcuts</div>
+  </div>
+</div>
+
+<!-- Keyboard shortcut overlay -->
+<div class="shortcut-overlay" id="shortcutOverlay">
+  <div class="shortcut-card">
+    <h3>Keyboard Shortcuts</h3>
+    <div class="shortcut-row"><span class="action">Send message</span><span class="key">Enter</span></div>
+    <div class="shortcut-row"><span class="action">Close window</span><span class="key">Esc</span></div>
+    <div class="shortcut-row"><span class="action">Show shortcuts</span><span class="key">?</span></div>
+    <div class="shortcut-row"><span class="action">Take screenshot</span><span class="action">Camera button</span></div>
+    <div class="shortcut-row"><span class="action">Open Planly</span><span class="key">Ctrl+Alt+J</span></div>
+    <div class="shortcut-dismiss">Press any key to dismiss</div>
   </div>
 </div>
 
@@ -452,7 +808,13 @@
   let currentActions = [];
   let lastScreenshot = null;
   let isProcessing = false;
-  let currentAbortController = null; // issue 7b: timeout/cancellation
+  let currentAbortController = null;
+  let lastPromptText = '';
+  let userIsScrolledUp = false;
+
+  // SVG constants
+  const SEND_ARROW_SVG = '<svg class="send-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 7h10M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SPINNER_SVG = '<svg class="spinner-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="24" stroke-dashoffset="8" stroke-linecap="round"/></svg>';
 
   // ─── DOM refs ───────────────────────────────────────────
   const messagesEl = document.getElementById('messages');
@@ -462,28 +824,121 @@
   const confirmBar = document.getElementById('confirmBar');
   const btnConfirmActions = document.getElementById('btnConfirmActions');
   const btnCancelActions = document.getElementById('btnCancelActions');
+  const statusBar = document.getElementById('statusBar');
+  const scrollPill = document.getElementById('scrollPill');
+  const shortcutOverlay = document.getElementById('shortcutOverlay');
 
   // ─── Planly bridge (from preload) ──────────────────────
   const planlyApi = window.planly;
 
+  // ─── Processing UI helpers ────────────────────────────
+  function setProcessingUI(active) {
+    if (active) {
+      btnSend.innerHTML = SPINNER_SVG;
+      btnSend.classList.remove('active');
+      btnSend.classList.add('processing');
+      inputField.disabled = true;
+      inputField.placeholder = 'Thinking...';
+      btnScreenshot.disabled = true;
+    } else {
+      btnSend.innerHTML = SEND_ARROW_SVG;
+      btnSend.classList.remove('processing');
+      inputField.disabled = false;
+      inputField.placeholder = "Type a command... e.g. 'appoint dinner'";
+      btnScreenshot.disabled = false;
+      btnSend.classList.toggle('active', inputField.value.trim().length > 0);
+    }
+  }
+
+  // ─── Screenshot thumbnail ─────────────────────────────
+  function showScreenshotThumbnail() {
+    removeScreenshotThumbnail();
+    if (!lastScreenshot || !lastScreenshot.imageBase64) return;
+
+    const thumb = document.createElement('div');
+    thumb.className = 'screenshot-thumb';
+    thumb.id = 'screenshotThumb';
+
+    const img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + lastScreenshot.imageBase64;
+    thumb.appendChild(img);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'thumb-remove';
+    removeBtn.textContent = '\u00d7';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      lastScreenshot = null;
+      removeScreenshotThumbnail();
+    });
+    thumb.appendChild(removeBtn);
+
+    const inputArea = document.getElementById('inputArea');
+    inputArea.insertBefore(thumb, inputField);
+  }
+
+  function removeScreenshotThumbnail() {
+    const existing = document.getElementById('screenshotThumb');
+    if (existing) existing.remove();
+  }
+
+  // ─── OCR confidence badge ──────────────────────────────
+  function showOcrBadge(confidence) {
+    statusBar.innerHTML = '';
+    const pct = Math.round(confidence * 100);
+    let colorClass = 'green';
+    if (pct < 50) colorClass = 'red';
+    else if (pct < 80) colorClass = 'yellow';
+
+    const badge = document.createElement('span');
+    badge.className = 'ocr-badge ' + colorClass;
+    badge.textContent = 'OCR: ' + pct + '%';
+    statusBar.appendChild(badge);
+    statusBar.classList.add('visible');
+
+    setTimeout(() => {
+      badge.style.opacity = '0';
+      setTimeout(() => {
+        statusBar.classList.remove('visible');
+        statusBar.innerHTML = '';
+      }, 300);
+    }, 3000);
+  }
+
   // ─── Input handling ────────────────────────────────────
   inputField.addEventListener('input', () => {
-    btnSend.classList.toggle('active', inputField.value.trim().length > 0);
+    btnSend.classList.toggle('active', inputField.value.trim().length > 0 && !isProcessing);
   });
 
   inputField.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && inputField.value.trim()) {
       handleSend();
     }
+    // ? shortcut — only when input is empty
+    if (e.key === '?' && inputField.value === '') {
+      e.preventDefault();
+      shortcutOverlay.classList.add('visible');
+    }
   });
 
   // Global Esc to close
   document.addEventListener('keydown', (e) => {
+    // Dismiss shortcut overlay first
+    if (shortcutOverlay.classList.contains('visible')) {
+      shortcutOverlay.classList.remove('visible');
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape') {
       if (window.planly) {
         window.planly.closeChat();
       }
     }
+  });
+
+  // Dismiss shortcut overlay on click
+  shortcutOverlay.addEventListener('click', () => {
+    shortcutOverlay.classList.remove('visible');
   });
 
   btnSend.addEventListener('click', () => {
@@ -492,13 +947,14 @@
 
   // ─── Screenshot button ─────────────────────────────────
   btnScreenshot.addEventListener('click', async () => {
-    btnScreenshot.style.color = '#6c5ce7';
+    btnScreenshot.style.color = 'var(--accent)';
     try {
       lastScreenshot = await planlyApi.takeScreenshot();
-      btnScreenshot.style.color = '#00d26a';
+      btnScreenshot.style.color = 'var(--teal)';
+      showScreenshotThumbnail();
       setTimeout(() => { btnScreenshot.style.color = ''; }, 1500);
     } catch (err) {
-      btnScreenshot.style.color = '#ff4757';
+      btnScreenshot.style.color = 'var(--error)';
       setTimeout(() => { btnScreenshot.style.color = ''; }, 1500);
       reportError('screenshot', err);
     }
@@ -512,9 +968,23 @@
     document.querySelectorAll('.action-card').forEach(c => c.classList.remove('selected'));
   });
 
+  // ─── Scroll detection for "scroll to bottom" pill ──────
+  messagesEl.addEventListener('scroll', () => {
+    const threshold = 60;
+    const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
+    userIsScrolledUp = !atBottom;
+    if (atBottom) {
+      scrollPill.classList.remove('visible');
+    }
+  });
+
+  scrollPill.addEventListener('click', () => {
+    scrollToBottom();
+    scrollPill.classList.remove('visible');
+  });
+
   // ─── Reset on toggle (issues 3a, 3b) ───────────────────
   planlyApi.resetChat(() => {
-    // Cancel any in-flight request
     if (currentAbortController) {
       currentAbortController.abort();
       currentAbortController = null;
@@ -524,9 +994,15 @@
     currentActions = [];
     lastScreenshot = null;
     isProcessing = false;
-    messagesEl.innerHTML = '';
+    lastPromptText = '';
+    messagesEl.querySelectorAll('.msg-wrapper, .action-cards, .picker-container, .result-item, .typing-indicator').forEach(el => el.remove());
     messagesEl.classList.remove('has-messages');
     confirmBar.classList.remove('visible');
+    scrollPill.classList.remove('visible');
+    statusBar.classList.remove('visible');
+    statusBar.innerHTML = '';
+    removeScreenshotThumbnail();
+    setProcessingUI(false);
     inputField.value = '';
     btnSend.classList.remove('active');
     requestResize();
@@ -539,8 +1015,10 @@
     if (!text) return;
 
     isProcessing = true;
+    lastPromptText = text;
     inputField.value = '';
     btnSend.classList.remove('active');
+    setProcessingUI(true);
 
     addMessage('user', text);
 
@@ -554,34 +1032,41 @@
         addMessage('agent', 'Failed to capture screenshot. Please try the camera button manually.');
         reportError('auto-screenshot', err);
         isProcessing = false;
+        setProcessingUI(false);
         return;
       }
     }
+
+    removeScreenshotThumbnail();
 
     if (!document.querySelector('.typing-indicator')) {
       addTypingIndicator();
     }
 
-    // Set up timeout (issue 7b)
+    // Set up timeout
     const abortController = { aborted: false };
     currentAbortController = abortController;
     const timeoutId = setTimeout(() => {
       if (!abortController.aborted) {
         abortController.aborted = true;
         removeAllTypingIndicators();
-        addMessage('agent', 'Request timed out. Please try again.');
+        addTimeoutMessage();
         isProcessing = false;
+        setProcessingUI(false);
         currentAbortController = null;
       }
     }, 30000);
 
     try {
-      // OCR via main process (issues 6a, 7a)
       const ocrResult = await planlyApi.runOCR(lastScreenshot.imageBase64);
 
       if (abortController.aborted) return;
 
-      // Agent call via main process IPC (issue 1b — uses ApiClient with auto-refresh)
+      // Show OCR confidence badge
+      if (ocrResult && typeof ocrResult.confidence === 'number') {
+        showOcrBadge(ocrResult.confidence);
+      }
+
       const response = await planlyApi.agentProcess({
         conversation_id: conversationId,
         user_prompt: text,
@@ -598,7 +1083,6 @@
 
       removeAllTypingIndicators();
 
-      // Validate response shape (issue 2a)
       if (!response || !response.conversation_id) {
         addMessage('agent', 'Received an unexpected response from the server.');
         reportError('agent:process', 'Missing conversation_id in response');
@@ -613,10 +1097,7 @@
       }
 
       conversationId = response.conversation_id;
-
-      // Clear screenshot after successful use (issue 3a)
       lastScreenshot = null;
-
       renderBlocks(response.blocks);
 
     } catch (err) {
@@ -627,7 +1108,6 @@
       removeAllTypingIndicators();
       const errMsg = err && err.message ? err.message : 'Unknown error';
 
-      // Surface auth errors clearly (issue 4b)
       if (errMsg.includes('401') || errMsg.toLowerCase().includes('unauthorized')) {
         addMessage('agent', 'Your session has expired. Please log in again.');
       } else {
@@ -636,7 +1116,40 @@
       reportError('handleSend', errMsg);
     } finally {
       isProcessing = false;
+      setProcessingUI(false);
     }
+  }
+
+  // ─── Timeout with retry button ─────────────────────────
+  function addTimeoutMessage() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper agent';
+
+    const msg = document.createElement('div');
+    msg.className = 'msg';
+    msg.textContent = 'Request timed out. ';
+
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'retry-btn';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', () => {
+      wrapper.remove();
+      inputField.value = lastPromptText;
+      handleSend();
+    });
+    msg.appendChild(retryBtn);
+
+    const time = document.createElement('div');
+    time.className = 'msg-time';
+    time.dataset.ts = Date.now();
+    time.textContent = 'just now';
+
+    wrapper.appendChild(msg);
+    wrapper.appendChild(time);
+    messagesEl.appendChild(wrapper);
+    messagesEl.classList.add('has-messages');
+    scrollToBottom();
+    requestResize();
   }
 
   // ─── Confirm actions ────────────────────────────────────
@@ -647,7 +1160,6 @@
     addTypingIndicator();
 
     try {
-      // Route through main process IPC (issue 1b)
       const response = await planlyApi.agentConfirm(
         conversationId,
         Array.from(selectedActionIds)
@@ -655,7 +1167,6 @@
 
       removeAllTypingIndicators();
 
-      // Validate response (issue 2a)
       if (!response || !Array.isArray(response.results)) {
         addMessage('agent', 'Received an unexpected confirmation response.');
         reportError('agent:confirm', 'Invalid response shape');
@@ -730,7 +1241,7 @@
     wrapper.className = 'action-cards';
 
     for (const action of actions) {
-      if (!action || !action.action_id) continue; // skip malformed actions (issue 2a)
+      if (!action || !action.action_id) continue;
 
       const card = document.createElement('div');
       card.className = 'action-card';
@@ -780,7 +1291,6 @@
       const val = pickerInput.value;
       if (!val) return;
       container.remove();
-      // Send the picked value as a user message
       inputField.value = val;
       handleSend();
     });
@@ -791,23 +1301,97 @@
     requestResize();
   }
 
+  // ─── Markdown parser (lightweight, regex-based) ────────
+  function renderMarkdown(text) {
+    let html = escapeHtml(text);
+
+    // Code blocks (```)
+    html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      return '<pre><code>' + code.trim() + '</code></pre>';
+    });
+
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Italic
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // Bullet lists (lines starting with - or *)
+    html = html.replace(/((?:^|\n)(?:[*\-] .+(?:\n|$))+)/g, (match) => {
+      const items = match.trim().split('\n').map(line => {
+        const content = line.replace(/^[*\-] /, '');
+        return '<li>' + content + '</li>';
+      }).join('');
+      return '<ul>' + items + '</ul>';
+    });
+
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+
+    return html;
+  }
+
   // ─── Helpers ────────────────────────────────────────────
   function addMessage(role, text) {
-    const el = document.createElement('div');
-    el.className = 'msg ' + role;
-    el.textContent = text;
-    messagesEl.appendChild(el);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper ' + role;
+
+    const msg = document.createElement('div');
+    msg.className = 'msg';
+
+    if (role === 'agent') {
+      msg.innerHTML = renderMarkdown(text);
+    } else {
+      msg.textContent = text;
+    }
+
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-copy-btn';
+    copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 4V2.5A1.5 1.5 0 006.5 1H2.5A1.5 1.5 0 001 2.5v4A1.5 1.5 0 002.5 8H4" stroke="currentColor" stroke-width="1.2"/></svg>';
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.classList.add('copied');
+        copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        setTimeout(() => {
+          copyBtn.classList.remove('copied');
+          copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 4V2.5A1.5 1.5 0 006.5 1H2.5A1.5 1.5 0 001 2.5v4A1.5 1.5 0 002.5 8H4" stroke="currentColor" stroke-width="1.2"/></svg>';
+        }, 1500);
+      });
+    });
+    msg.appendChild(copyBtn);
+
+    // Timestamp
+    const time = document.createElement('div');
+    time.className = 'msg-time';
+    time.dataset.ts = Date.now();
+    time.textContent = 'just now';
+
+    wrapper.appendChild(msg);
+    wrapper.appendChild(time);
+    messagesEl.appendChild(wrapper);
     messagesEl.classList.add('has-messages');
-    scrollToBottom();
+
+    if (userIsScrolledUp) {
+      scrollPill.classList.add('visible');
+    } else {
+      scrollToBottom();
+    }
     requestResize();
   }
 
   function addTypingIndicator() {
-    // Remove any existing indicators first (issue 3c)
     removeAllTypingIndicators();
     const el = document.createElement('div');
-    el.className = 'msg agent typing-indicator';
-    el.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+    el.className = 'msg-wrapper agent typing-indicator';
+    el.innerHTML = '<div class="msg"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
     messagesEl.appendChild(el);
     messagesEl.classList.add('has-messages');
     scrollToBottom();
@@ -815,7 +1399,6 @@
   }
 
   function removeAllTypingIndicators() {
-    // Remove ALL typing indicators, not just the first (issue 3c)
     document.querySelectorAll('.typing-indicator').forEach(el => el.remove());
   }
 
@@ -824,10 +1407,9 @@
   }
 
   function requestResize() {
-    // Calculate needed height: chat-box content + padding
     requestAnimationFrame(() => {
       const chatBox = document.querySelector('.chat-box');
-      const contentHeight = chatBox.scrollHeight + 16; // 8px padding top+bottom
+      const contentHeight = chatBox.scrollHeight + 16;
       const minHeight = 72;
       const needed = Math.max(minHeight, contentHeight);
       planlyApi.resizeChat(needed);
@@ -840,6 +1422,22 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  // ─── Relative timestamp updater ────────────────────────
+  function relativeTime(ts) {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 10) return 'just now';
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  setInterval(() => {
+    document.querySelectorAll('.msg-time[data-ts]').forEach(el => {
+      el.textContent = relativeTime(parseInt(el.dataset.ts, 10));
+    });
+  }, 30000);
 
   // ─── Error reporting (issue 5a) ─────────────────────────
   function reportError(context, err) {
@@ -854,29 +1452,6 @@
   // ═══════════════════════════════════════════════════════
   // WindowManager — handles drag & resize event flows
   // ═══════════════════════════════════════════════════════
-  //
-  // Event flow — Drag:
-  //   pointerdown on .drag-handle
-  //   → capture pointer, record start screen coords
-  //   → pointermove: compute delta, call planly.moveWindow(dx, dy)
-  //   → pointerup/pointercancel: release capture, persist bounds
-  //
-  // Event flow — Resize:
-  //   pointerdown on .resize-handle[data-direction]
-  //   → capture pointer, record start coords + start bounds
-  //   → pointermove: compute delta per direction axes,
-  //     send new bounds via planly.setWindowBounds(...)
-  //   → pointerup/pointercancel: release, persist bounds
-  //
-  // Edge cases handled:
-  //   • Pointer capture prevents events leaking to iframes / external windows
-  //   • Bounds clamped to screen work area (server-side in main.ts)
-  //   • Min/max constraints enforced both client-side and Electron-side
-  //   • Keyboard arrow keys move the window when drag handle is focused
-  //   • High-DPI: all coordinates are in logical (CSS) pixels — Electron
-  //     handles DPR mapping internally via screen.getPrimaryDisplay()
-  //   • Stale/offscreen persisted values are corrected on restore
-  //
 
   const WindowManager = (() => {
     const KEYBOARD_MOVE_STEP = 20; // px per arrow key press
@@ -907,9 +1482,7 @@
     const dragHandle = document.getElementById('dragHandle');
 
     function onDragStart(e) {
-      // Only primary button
       if (e.button !== 0) return;
-      // Don't start drag from interactive children (there shouldn't be any, but safety)
       if (e.target !== dragHandle && !dragHandle.contains(e.target)) return;
 
       isDragging = true;
@@ -1001,7 +1574,6 @@
 
       let { x, y, width, height } = resizeStartBounds;
 
-      // Compute new bounds based on resize direction
       if (resizeDir.includes('e')) {
         width = resizeStartBounds.width + dx;
       }
@@ -1017,15 +1589,12 @@
         y = resizeStartBounds.y + dy;
       }
 
-      // Client-side clamp (main process also clamps)
       width = Math.max(constraints.minWidth, Math.min(width, constraints.maxWidth));
       height = Math.max(constraints.minHeight, Math.min(height, constraints.maxHeight));
 
-      // If width was clamped on the west side, fix x
       if (resizeDir.includes('w')) {
         x = resizeStartBounds.x + resizeStartBounds.width - width;
       }
-      // If height was clamped on the north side, fix y
       if (resizeDir.includes('n')) {
         y = resizeStartBounds.y + resizeStartBounds.height - height;
       }
@@ -1050,11 +1619,6 @@
       handle.addEventListener('pointerup', onResizeEnd);
       handle.addEventListener('pointercancel', onResizeEnd);
     });
-
-    // ─── Prevent drag/resize from inner controls ──
-    // The pointer capture approach already prevents this:
-    // pointerdown only fires on .drag-handle / .resize-handle elements,
-    // so clicks on inputs, buttons, messages etc. behave normally.
 
     return { loadConstraints };
   })();</script>

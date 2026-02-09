@@ -70,6 +70,10 @@ contextBridge.exposeInMainWorld('planly', {
   // OCR — routed through main process to avoid blocking renderer (issue 6a)
   runOCR: (imageBase64: string) => ipcRenderer.invoke('ocr:run', imageBase64),
 
+  // App settings persistence
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  setSettings: (settings: Record<string, unknown>) => ipcRenderer.invoke('settings:set', settings),
+
   // Error forwarding — renderer → main for persistent logging (issue 5a)
   reportError: (context: string, error: string) =>
     ipcRenderer.send('renderer:error', context, error),

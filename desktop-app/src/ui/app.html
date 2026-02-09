@@ -3,21 +3,81 @@
 <head>
   <meta charset="UTF-8">
   <title>Planly</title>
+  <link rel="preconnect" href="https://api.fontshare.com">
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@700,800&display=swap" rel="stylesheet">
   <style>
+    /* ─── Tokens (matches landing page) ────────────────── */
+    :root {
+      --bg:          #0c0f16;
+      --bg-subtle:   #111419;
+      --surface:     #171b23;
+      --surface-hi:  #1e2330;
+      --border:      rgba(240, 237, 230, 0.06);
+      --border-hi:   rgba(240, 237, 230, 0.1);
+
+      --accent:      #e8654a;
+      --accent-dim:  rgba(232, 101, 74, 0.15);
+      --accent-hover:#d4563c;
+      --accent-2:    #f4a261;
+      --teal:        #4ecdc4;
+      --teal-dim:    rgba(78, 205, 196, 0.12);
+
+      --text:        #f0ede6;
+      --text-2:      #b0ada4;
+      --text-3:      #6b6e7a;
+
+      --success:     #4ecdc4;
+      --error:       #e8654a;
+
+      --font-display: 'Cabinet Grotesk', 'Satoshi', sans-serif;
+      --font-body:    'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+      --radius:      12px;
+      --radius-lg:   20px;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-      background: #1a1a2e;
+      font-family: var(--font-body);
+      background: var(--bg);
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100vh;
       user-select: none;
       overflow: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .view { display: none; }
+    /* ─── Grain overlay ────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-size: 200px;
+    }
+
+    /* ─── Background glow ──────────────────────────────── */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(232, 101, 74, 0.06) 0%, rgba(244, 162, 97, 0.02) 40%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .view { display: none; position: relative; z-index: 1; }
     .view.active { display: flex; }
 
     /* ─── Splash View ────────────────────────────── */
@@ -32,25 +92,32 @@
 
     .splash {
       text-align: center;
+      animation: fadeIn 0.6s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .logo {
-      font-size: 36px;
+      font-family: var(--font-display);
+      font-size: 42px;
       font-weight: 800;
-      color: #fff;
-      letter-spacing: -0.5px;
-      margin-bottom: 32px;
+      color: var(--text);
+      letter-spacing: -1px;
+      margin-bottom: 36px;
     }
 
     .logo span {
-      color: #6c5ce7;
+      color: var(--accent);
     }
 
     .spinner {
       width: 32px;
       height: 32px;
-      border: 3px solid rgba(108, 92, 231, 0.2);
-      border-top-color: #6c5ce7;
+      border: 3px solid var(--accent-dim);
+      border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 20px;
@@ -62,16 +129,17 @@
 
     .splash-status {
       font-size: 13px;
-      color: #888;
+      color: var(--text-3);
+      font-weight: 500;
       transition: color 0.3s;
     }
 
     .splash-status.connected {
-      color: #00d26a;
+      color: var(--teal);
     }
 
     .splash-status.error {
-      color: #ff4757;
+      color: var(--error);
     }
 
     /* ─── Login View ─────────────────────────────── */
@@ -84,30 +152,47 @@
     }
 
     .login-box {
-      width: 360px;
-      padding: 32px 28px;
-      color: #e0e0e0;
+      width: 380px;
+      padding: 36px 32px;
+      color: var(--text);
+      animation: fadeIn 0.5s ease;
     }
 
     .login-box .title-bar {
       display: flex;
       justify-content: center;
       align-items: center;
-      margin-bottom: 28px;
+      margin-bottom: 8px;
       -webkit-app-region: drag;
     }
 
     .login-box h1 {
-      font-size: 22px;
-      font-weight: 700;
-      color: #fff;
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+
+    .login-box h1 span {
+      color: var(--accent);
+    }
+
+    .login-subtitle {
+      text-align: center;
+      font-size: 14px;
+      color: var(--text-3);
+      margin-bottom: 28px;
     }
 
     .esc-hint {
       text-align: center;
       font-size: 10px;
-      color: #444;
-      margin-bottom: 20px;
+      color: var(--text-3);
+      margin-bottom: 24px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.5px;
+      opacity: 0.5;
     }
 
     .google-btn {
@@ -119,16 +204,17 @@
       border-radius: 10px;
       font-size: 14px;
       font-weight: 600;
+      font-family: var(--font-body);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 10px;
-      transition: background 0.15s;
-      margin-bottom: 20px;
+      transition: all 0.2s;
+      margin-bottom: 24px;
     }
-    .google-btn:hover { background: #f0f0f0; }
-    .google-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .google-btn:hover { background: #f0f0f0; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1); }
+    .google-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
     .google-btn svg {
       width: 18px;
@@ -140,25 +226,27 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
     }
     .divider::before, .divider::after {
       content: '';
       flex: 1;
       height: 1px;
-      background: rgba(255,255,255,0.1);
+      background: var(--border-hi);
     }
     .divider span {
       font-size: 12px;
-      color: #555;
+      color: var(--text-3);
       text-transform: lowercase;
+      font-weight: 500;
     }
 
     .tabs {
       display: flex;
       gap: 4px;
-      margin-bottom: 24px;
-      background: rgba(255,255,255,0.04);
+      margin-bottom: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 3px;
     }
@@ -168,63 +256,81 @@
       padding: 8px;
       text-align: center;
       font-size: 13px;
-      font-weight: 500;
-      color: #888;
+      font-weight: 600;
+      color: var(--text-3);
       border: none;
       background: transparent;
       border-radius: 8px;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: all 0.2s;
+      font-family: var(--font-body);
     }
-    .tab.active { background: #6c5ce7; color: #fff; }
+    .tab:hover { color: var(--text-2); }
+    .tab.active { background: var(--accent); color: #fff; }
 
     .form-group {
-      margin-bottom: 16px;
+      margin-bottom: 18px;
     }
 
     .form-group label {
       display: block;
-      font-size: 12px;
-      color: #888;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 1px;
       margin-bottom: 6px;
-      font-weight: 500;
     }
 
-    .form-group input {
+    .form-group input, .form-group select {
       width: 100%;
-      padding: 10px 14px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.1);
+      padding: 11px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
       border-radius: 10px;
-      color: #e0e0e0;
+      color: var(--text);
       font-size: 14px;
+      font-family: var(--font-body);
       outline: none;
-      transition: border-color 0.15s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    .form-group input:focus { border-color: #6c5ce7; }
+    .form-group input::placeholder {
+      color: var(--text-3);
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    .form-group select option {
+      background: var(--surface);
+      color: var(--text);
+    }
 
     .submit-btn {
       width: 100%;
       padding: 12px;
-      background: #6c5ce7;
+      background: var(--accent);
       color: #fff;
       border: none;
       border-radius: 10px;
       font-size: 14px;
       font-weight: 600;
+      font-family: var(--font-body);
       cursor: pointer;
-      transition: background 0.15s;
+      transition: all 0.2s;
       margin-top: 8px;
     }
-    .submit-btn:hover { background: #5a4bd1; }
-    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .submit-btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(232, 101, 74, 0.3); }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
     .error-msg {
-      color: #ff4757;
+      color: var(--error);
       font-size: 12px;
-      margin-top: 12px;
+      margin-top: 14px;
       text-align: center;
       display: none;
+      font-weight: 500;
     }
 
     .error-msg.visible { display: block; }
@@ -242,10 +348,11 @@
     }
 
     .home-box {
-      width: 320px;
-      padding: 32px 28px;
-      color: #e0e0e0;
+      width: 340px;
+      padding: 36px 32px;
+      color: var(--text);
       text-align: center;
+      animation: fadeIn 0.5s ease;
     }
 
     .home-box .title-bar {
@@ -254,34 +361,63 @@
       align-items: center;
       margin-bottom: 8px;
       -webkit-app-region: drag;
+      position: relative;
     }
 
     .home-box h1 {
-      font-size: 22px;
-      font-weight: 700;
-      color: #fff;
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.5px;
     }
+
+    .home-box h1 span {
+      color: var(--accent);
+    }
+
+    .settings-gear {
+      position: absolute;
+      right: -16px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      transition: all 0.2s;
+      -webkit-app-region: no-drag;
+    }
+    .settings-gear:hover { color: var(--text); background: var(--surface); }
 
     .home-greeting {
       font-size: 15px;
-      color: #ccc;
-      margin-bottom: 24px;
+      color: var(--text-2);
+      margin-bottom: 28px;
+      font-weight: 500;
     }
 
     .shortcut-hint {
       font-size: 12px;
-      color: #666;
-      margin-bottom: 28px;
+      color: var(--text-3);
+      margin-bottom: 32px;
+      line-height: 1.6;
     }
 
     .shortcut-hint kbd {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 4px;
-      padding: 2px 6px;
-      font-family: inherit;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 5px;
+      padding: 3px 7px;
+      font-family: var(--font-mono);
       font-size: 11px;
-      color: #aaa;
+      color: var(--text-2);
     }
 
     .btn {
@@ -292,30 +428,299 @@
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: all 0.2s;
+      font-family: var(--font-body);
     }
 
     .btn-logout {
-      background: #6c5ce7;
+      background: var(--accent);
       color: #fff;
       margin-bottom: 12px;
     }
-    .btn-logout:hover { background: #5a4bd1; }
+    .btn-logout:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(232, 101, 74, 0.3); }
 
     .btn-delete {
       background: transparent;
-      color: #ff4757;
+      color: var(--error);
       margin-bottom: 12px;
       font-size: 12px;
       padding: 8px;
+      border: 1px solid transparent;
     }
-    .btn-delete:hover { background: rgba(255,71,87,0.1); }
+    .btn-delete:hover { background: var(--accent-dim); border-color: rgba(232, 101, 74, 0.15); }
 
     .btn-quit {
-      background: rgba(255,255,255,0.06);
-      color: #aaa;
+      background: var(--surface);
+      color: var(--text-3);
+      border: 1px solid var(--border);
     }
-    .btn-quit:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .btn-quit:hover { background: var(--surface-hi); color: var(--text); border-color: var(--border-hi); }
+
+    /* ─── Settings View ──────────────────────────── */
+
+    #view-settings {
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+
+    .settings-box {
+      width: 380px;
+      padding: 36px 32px;
+      color: var(--text);
+      animation: fadeIn 0.3s ease;
+    }
+
+    .settings-box .title-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      -webkit-app-region: drag;
+    }
+
+    .settings-back-btn {
+      width: 30px;
+      height: 30px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 8px;
+      color: var(--text-2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      -webkit-app-region: no-drag;
+      flex-shrink: 0;
+    }
+    .settings-back-btn:hover { background: var(--surface-hi); color: var(--text); }
+
+    .settings-box h2 {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .settings-section {
+      margin-bottom: 20px;
+    }
+
+    .settings-section label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    .settings-section input,
+    .settings-section select {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: var(--font-body);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .settings-section input:focus,
+    .settings-section select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    .settings-section select option {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .settings-section input[readonly] {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+
+    .toggle-row .toggle-label {
+      font-size: 13px;
+      color: var(--text-2);
+      font-weight: 500;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: var(--text-2);
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .toggle.active::after {
+      left: 20px;
+      background: #fff;
+    }
+
+    .settings-save-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font-body);
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+    .settings-save-btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(232, 101, 74, 0.3); }
+
+    .settings-saved {
+      text-align: center;
+      font-size: 12px;
+      color: var(--teal);
+      font-weight: 500;
+      margin-top: 10px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .settings-saved.visible { opacity: 1; }
+
+    /* ─── Onboarding Overlay ─────────────────────── */
+
+    .onboarding-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      background: rgba(12, 15, 22, 0.92);
+      backdrop-filter: blur(12px);
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .onboarding-overlay.visible {
+      display: flex;
+    }
+
+    .onboarding-card {
+      width: 340px;
+      text-align: center;
+      padding: 40px 32px 32px;
+      animation: fadeIn 0.5s ease;
+    }
+
+    .onboarding-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 20px;
+      background: var(--accent-dim);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+    }
+
+    .onboarding-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .onboarding-desc {
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    .onboarding-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .onboarding-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-hi);
+      transition: all 0.3s;
+    }
+
+    .onboarding-dot.active {
+      background: var(--accent);
+      width: 20px;
+      border-radius: 4px;
+    }
+
+    .onboarding-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font-body);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .onboarding-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+
+    .onboarding-skip {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-3);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-body);
+      transition: color 0.2s;
+    }
+    .onboarding-skip:hover { color: var(--text-2); }
   </style>
 </head>
 <body>
@@ -323,7 +728,7 @@
 <!-- ─── Splash View ─────────────────────────── -->
 <div class="view active" id="view-splash">
   <div class="splash">
-    <div class="logo">Plan<span>ly</span></div>
+    <div class="logo">planly<span>.</span></div>
     <div class="spinner" id="spinner"></div>
     <div class="splash-status" id="splashStatus">Starting...</div>
   </div>
@@ -333,9 +738,10 @@
 <div class="view" id="view-login">
   <div class="login-box">
     <div class="title-bar">
-      <h1>Planly</h1>
+      <h1>planly<span>.</span></h1>
     </div>
-    <div class="esc-hint">Esc to hide</div>
+    <div class="login-subtitle">Sign in to get started</div>
+    <div class="esc-hint">esc to hide</div>
 
     <!-- Google OAuth -->
     <button class="google-btn" id="googleBtn">
@@ -378,13 +784,82 @@
 <div class="view" id="view-home">
   <div class="home-box">
     <div class="title-bar">
-      <h1>Planly</h1>
+      <h1>planly<span>.</span></h1>
+      <button class="settings-gear" id="settingsGearBtn" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M7.5 1.5h3l.4 2.1a5.5 5.5 0 011.3.75l2-.8 1.5 2.6-1.6 1.3a5.6 5.6 0 010 1.5l1.6 1.3-1.5 2.6-2-.8a5.5 5.5 0 01-1.3.75l-.4 2.1h-3l-.4-2.1a5.5 5.5 0 01-1.3-.75l-2 .8-1.5-2.6 1.6-1.3a5.6 5.6 0 010-1.5l-1.6-1.3 1.5-2.6 2 .8a5.5 5.5 0 011.3-.75l.4-2.1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.3"/>
+        </svg>
+      </button>
     </div>
     <div class="home-greeting" id="homeGreeting">Welcome!</div>
     <div class="shortcut-hint">Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd> to open chat</div>
     <button class="btn btn-logout" id="logoutBtn">Logout</button>
     <button class="btn btn-delete" id="deleteAccountBtn">Delete Account</button>
     <button class="btn btn-quit" id="quitBtn">Quit</button>
+  </div>
+</div>
+
+<!-- ─── Settings View ─────────────────────────── -->
+<div class="view" id="view-settings">
+  <div class="settings-box">
+    <div class="title-bar">
+      <button class="settings-back-btn" id="settingsBackBtn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <h2>Settings</h2>
+    </div>
+
+    <div class="settings-section">
+      <label>API URL</label>
+      <input type="text" id="settingsApiUrl" placeholder="https://api.example.com" />
+    </div>
+
+    <div class="settings-section">
+      <label>OCR Language</label>
+      <select id="settingsOcrLang">
+        <option value="eng">English</option>
+        <option value="spa">Spanish</option>
+        <option value="fra">French</option>
+        <option value="deu">German</option>
+        <option value="ita">Italian</option>
+        <option value="por">Portuguese</option>
+        <option value="rus">Russian</option>
+        <option value="chi_sim">Chinese (Simplified)</option>
+        <option value="jpn">Japanese</option>
+        <option value="kor">Korean</option>
+        <option value="ara">Arabic</option>
+      </select>
+    </div>
+
+    <div class="settings-section">
+      <div class="toggle-row">
+        <span class="toggle-label">Auto-screenshot on send</span>
+        <div class="toggle" id="settingsAutoScreenshot"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <label>Keyboard Shortcut</label>
+      <input type="text" value="Ctrl + Alt + J" readonly />
+    </div>
+
+    <button class="settings-save-btn" id="settingsSaveBtn">Save Settings</button>
+    <div class="settings-saved" id="settingsSaved">Settings saved</div>
+  </div>
+</div>
+
+<!-- ─── Onboarding Overlay ───────────────────── -->
+<div class="onboarding-overlay" id="onboardingOverlay">
+  <div class="onboarding-card" id="onboardingCard">
+    <div class="onboarding-icon" id="onboardingIcon"></div>
+    <div class="onboarding-title" id="onboardingTitle"></div>
+    <div class="onboarding-desc" id="onboardingDesc"></div>
+    <div class="onboarding-dots" id="onboardingDots"></div>
+    <button class="onboarding-btn" id="onboardingBtn">Next</button>
+    <button class="onboarding-skip" id="onboardingSkip">Skip</button>
   </div>
 </div>
 
@@ -413,7 +888,12 @@
         status.textContent = 'Starting...';
         status.className = 'splash-status';
       }
-      if (spinner) spinner.style.borderTopColor = '#6c5ce7';
+      if (spinner) spinner.style.borderTopColor = 'var(--accent)';
+    }
+
+    // Show onboarding when navigating to home (if not completed)
+    if (viewName === 'home') {
+      checkOnboarding();
     }
   }
 
@@ -432,11 +912,11 @@
       if (status.toLowerCase().includes('welcome')) {
         statusEl.classList.remove('error');
         statusEl.classList.add('connected');
-        if (spinnerEl) spinnerEl.style.borderTopColor = '#00d26a';
+        if (spinnerEl) spinnerEl.style.borderTopColor = 'var(--teal)';
       } else if (status.toLowerCase().includes('unavailable') || status.toLowerCase().includes('failed') || status.toLowerCase().includes('error') || status.toLowerCase().includes('expired')) {
         statusEl.classList.remove('connected');
         statusEl.classList.add('error');
-        if (spinnerEl) spinnerEl.style.borderTopColor = '#ff4757';
+        if (spinnerEl) spinnerEl.style.borderTopColor = 'var(--error)';
       }
     });
 
@@ -535,6 +1015,131 @@
   document.getElementById('quitBtn').addEventListener('click', () => {
     if (window.planly) window.planly.quitApp();
   });
+
+  // ─── Settings Panel ────────────────────────
+  const settingsGearBtn = document.getElementById('settingsGearBtn');
+  const settingsBackBtn = document.getElementById('settingsBackBtn');
+  const settingsSaveBtn = document.getElementById('settingsSaveBtn');
+  const settingsSaved = document.getElementById('settingsSaved');
+  const settingsApiUrl = document.getElementById('settingsApiUrl');
+  const settingsOcrLang = document.getElementById('settingsOcrLang');
+  const settingsAutoScreenshot = document.getElementById('settingsAutoScreenshot');
+
+  let autoScreenshotEnabled = true;
+
+  settingsGearBtn.addEventListener('click', async () => {
+    // Load current settings
+    if (window.planly && window.planly.getSettings) {
+      try {
+        const settings = await window.planly.getSettings();
+        settingsApiUrl.value = settings.apiUrl || '';
+        settingsOcrLang.value = settings.ocrLanguage || 'eng';
+        autoScreenshotEnabled = settings.autoScreenshot !== false;
+        settingsAutoScreenshot.classList.toggle('active', autoScreenshotEnabled);
+      } catch (_) {}
+    }
+    navigate('settings');
+  });
+
+  settingsBackBtn.addEventListener('click', () => {
+    navigate('home');
+  });
+
+  settingsAutoScreenshot.addEventListener('click', () => {
+    autoScreenshotEnabled = !autoScreenshotEnabled;
+    settingsAutoScreenshot.classList.toggle('active', autoScreenshotEnabled);
+  });
+
+  settingsSaveBtn.addEventListener('click', async () => {
+    if (window.planly && window.planly.setSettings) {
+      try {
+        await window.planly.setSettings({
+          apiUrl: settingsApiUrl.value.trim(),
+          ocrLanguage: settingsOcrLang.value,
+          autoScreenshot: autoScreenshotEnabled,
+        });
+        settingsSaved.classList.add('visible');
+        setTimeout(() => settingsSaved.classList.remove('visible'), 2000);
+      } catch (err) {
+        alert('Failed to save settings: ' + (err.message || err));
+      }
+    }
+  });
+
+  // ─── Onboarding ────────────────────────────
+  const onboardingSteps = [
+    {
+      icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8"/></svg>',
+      title: 'Take a screenshot',
+      desc: 'Open any chat app and press the camera button or just send a message — Planly captures your screen automatically.',
+    },
+    {
+      icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h10M4 18h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+      title: 'Tell Planly what to do',
+      desc: 'Type a natural language command like "schedule dinner with Sarah tomorrow at 7pm" and Planly understands the intent.',
+    },
+    {
+      icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      title: 'Confirm the actions',
+      desc: 'Review the proposed actions, select which ones to execute, and confirm. Planly handles the rest.',
+    },
+  ];
+
+  let onboardingStep = 0;
+  const onboardingOverlay = document.getElementById('onboardingOverlay');
+  const onboardingBtn = document.getElementById('onboardingBtn');
+  const onboardingSkip = document.getElementById('onboardingSkip');
+
+  function renderOnboardingStep() {
+    const step = onboardingSteps[onboardingStep];
+    document.getElementById('onboardingIcon').innerHTML = step.icon;
+    document.getElementById('onboardingTitle').textContent = step.title;
+    document.getElementById('onboardingDesc').textContent = step.desc;
+
+    // Dots
+    const dotsEl = document.getElementById('onboardingDots');
+    dotsEl.innerHTML = '';
+    for (let i = 0; i < onboardingSteps.length; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'onboarding-dot' + (i === onboardingStep ? ' active' : '');
+      dotsEl.appendChild(dot);
+    }
+
+    // Button text
+    onboardingBtn.textContent = onboardingStep === onboardingSteps.length - 1 ? 'Get Started' : 'Next';
+  }
+
+  function dismissOnboarding() {
+    onboardingOverlay.classList.remove('visible');
+    if (window.planly && window.planly.setSettings) {
+      window.planly.setSettings({ onboardingComplete: true });
+    }
+  }
+
+  onboardingBtn.addEventListener('click', () => {
+    if (onboardingStep < onboardingSteps.length - 1) {
+      onboardingStep++;
+      renderOnboardingStep();
+    } else {
+      dismissOnboarding();
+    }
+  });
+
+  onboardingSkip.addEventListener('click', () => {
+    dismissOnboarding();
+  });
+
+  async function checkOnboarding() {
+    if (!window.planly || !window.planly.getSettings) return;
+    try {
+      const settings = await window.planly.getSettings();
+      if (!settings.onboardingComplete) {
+        onboardingStep = 0;
+        renderOnboardingStep();
+        onboardingOverlay.classList.add('visible');
+      }
+    } catch (_) {}
+  }
 </script>
 
 </body>
