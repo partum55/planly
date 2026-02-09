@@ -593,17 +593,21 @@ ipcMain.handle('auth:register', async (_event, email: string, password: string, 
   }
 });
 
-ipcMain.handle('auth:google-oauth', async () => {
-  try {
-    const tokens = await startBrowserOAuth();
-    authStore.setTokens(tokens.access_token, tokens.refresh_token);
-    await onAuthSuccess();
-    return tokens;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Google OAuth failed';
-    appLog('ERROR', 'auth:google-oauth', msg);
-    throw new Error(msg);
-  }
+ipcMain.handle('auth:google-oauth', () => {
+  // Return immediately so the renderer button doesn't block.
+  // Auth completion/failure is sent via 'oauth:result' event.
+  startBrowserOAuth()
+    .then(async (tokens) => {
+      authStore.setTokens(tokens.access_token, tokens.refresh_token);
+      await onAuthSuccess();
+    })
+    .catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Google OAuth failed';
+      appLog('ERROR', 'auth:google-oauth', msg);
+      try {
+        mainWindow?.webContents.send('oauth:error', msg);
+      } catch { /* window destroyed */ }
+    });
 });
 
 ipcMain.handle('auth:logout', () => {

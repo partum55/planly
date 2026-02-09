@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('planly', {
   register: (email: string, password: string, fullName: string) =>
     ipcRenderer.invoke('auth:register', email, password, fullName),
   startGoogleOAuth: () => ipcRenderer.invoke('auth:google-oauth'),
+  onOAuthError: (callback: (msg: string) => void) => {
+    const handler = (_e: unknown, msg: string) => callback(msg);
+    safeOn('oauth:error', handler);
+  },
   logout: () => ipcRenderer.invoke('auth:logout'),
   checkAuth: () => ipcRenderer.invoke('auth:check'),
 
