@@ -385,7 +385,13 @@
 
 <script>
   // ─── State ──────────────────────────────────────────────
-  const WEBSERVER_URL = 'http://localhost:8000';
+  let WEBSERVER_URL = 'http://localhost:8000';
+  (async () => {
+    try {
+      const cfg = await window.planly.getConfig();
+      WEBSERVER_URL = cfg.apiBaseUrl;
+    } catch (_) {}
+  })();
   let conversationId = null;
   let selectedActionIds = new Set();
   let currentActions = [];
@@ -549,7 +555,7 @@
   function loadTesseract() {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.src = 'vendor/tesseract.min.js';
       script.onload = () => resolve(window.Tesseract);
       script.onerror = reject;
       document.head.appendChild(script);

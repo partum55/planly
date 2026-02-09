@@ -8,7 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
+/build/
 develop-eggs/
 dist/
 downloads/
@@ -209,5 +209,9 @@ __marimo__/
 # Node / Electron
 node_modules/
 desktop-app/dist/
+desktop-app/release/
+desktop-app/src/ui/vendor/
 *.AppImage
+*.dmg
+*.exe
 package-lock.json

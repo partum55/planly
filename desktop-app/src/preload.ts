@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('planly', {
+  // Config
+  getConfig: () => ipcRenderer.invoke('config:get'),
+
   // Chat window controls
   closeChat: () => ipcRenderer.send('chat:close'),
   resizeChat: (height: number) => ipcRenderer.send('chat:resize', height),
@@ -23,7 +26,6 @@ contextBridge.exposeInMainWorld('planly', {
   onLoginSuccess: (tokens: { access_token: string; refresh_token: string }) =>
     ipcRenderer.send('login:success', tokens),
   closeLogin: () => ipcRenderer.send('login:close'),
-  skipLogin: () => ipcRenderer.send('login:skip'),
 
   // Start window
   onStartStatus: (callback: (status: string) => void) =>

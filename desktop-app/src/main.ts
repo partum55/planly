@@ -6,20 +6,21 @@ import {
   Menu,
   screen,
   nativeImage,
+  globalShortcut,
 } from 'electron';
 import * as path from 'path';
 import { captureScreenshot } from './services/screenshot';
 import { AuthStore } from './services/auth';
 import { ApiClient } from './services/api-client';
+import { config } from './config';
 
 // Disable sandbox for Linux (SUID sandbox not available in AppImage)
-app.commandLine.appendSwitch('no-sandbox');
-
-const API_BASE_URL = 'http://localhost:8000';
-const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID'; // Replace with real client ID
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('no-sandbox');
+}
 
 const authStore = new AuthStore();
-const apiClient = new ApiClient(API_BASE_URL, authStore);
+const apiClient = new ApiClient(config.API_BASE_URL, authStore);
 
 let chatWindow: BrowserWindow | null = null;
 let loginWindow: BrowserWindow | null = null;
@@ -35,7 +36,6 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    console.log('Second instance detected — toggling chat');
     toggleChatWindow();
   });
 }
@@ -99,7 +99,6 @@ function createChatWindow(): void {
 
   chatWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.key === 'Escape' && input.type === 'keyDown') {
-      console.log('Esc pressed in chat — hiding');
       chatWindow?.hide();
     }
   });
@@ -108,7 +107,6 @@ function createChatWindow(): void {
     if (!isQuitting) {
       e.preventDefault();
       chatWindow?.hide();
-      console.log('Chat close prevented — hidden instead');
     }
   });
 }
@@ -143,10 +141,10 @@ function createLoginWindow(): void {
 
 function createOAuthWindow(): Promise<string> {
   return new Promise((resolve, reject) => {
-    const redirectUri = 'http://localhost:8000/auth/google/callback';
+    const redirectUri = `${config.API_BASE_URL}/auth/google/callback`;
     const authUrl =
       'https://accounts.google.com/o/oauth2/v2/auth' +
-      `?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
+      `?client_id=${encodeURIComponent(config.GOOGLE_CLIENT_ID)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       '&response_type=code' +
       '&scope=openid%20email%20profile' +
@@ -214,7 +212,6 @@ function updateTrayMenu(): void {
           authStore.clear();
           isAuthenticated = false;
           updateTrayMenu();
-          console.log('Logged out');
         } else {
           if (!loginWindow || loginWindow.isDestroyed()) {
             createLoginWindow();
@@ -267,7 +264,6 @@ function toggleChatWindow(): void {
     });
     chatWindow!.show();
     chatWindow!.focus();
-    console.log('Chat window shown');
   }
 }
 
@@ -318,6 +314,10 @@ ipcMain.on('chat:close', () => {
 ipcMain.on('chat:resize', (_event, height: number) => {
   expandChatWindow(height);
 });
+
+ipcMain.handle('config:get', () => ({
+  apiBaseUrl: config.API_BASE_URL,
+}));
 
 ipcMain.handle('chat:screenshot', async () => {
   const wasVisible = chatWindow?.isVisible() ?? false;
@@ -371,7 +371,7 @@ ipcMain.handle('auth:google-oauth', async () => {
     // Send code to backend to exchange for tokens
     const { default: axios } = await import('axios');
     const { data } = await axios.post<{ access_token: string; refresh_token: string; user_id: string }>(
-      `${API_BASE_URL}/auth/google/callback`,
+      `${config.API_BASE_URL}/auth/google/callback`,
       { code }
     );
 
@@ -408,57 +408,33 @@ ipcMain.on('login:close', () => {
   }
 });
 
-ipcMain.on('login:skip', () => {
-  isAuthenticated = true;
-  updateTrayMenu();
-
-  if (startWindow && !startWindow.isDestroyed()) {
-    startWindow.close();
-    startWindow = null;
-  }
-
-  toggleChatWindow();
-
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.close();
-    loginWindow = null;
-  }
-});
-
 // ─── App Lifecycle ──────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  console.log('Planly starting...');
-
   // Always show start window first
   createStartWindow();
-  console.log('Start window created');
 
   try {
     createTray();
-    console.log('Tray created');
   } catch (err) {
-    console.log('Tray not available');
+    console.error('Tray not available');
   }
 
-  registerGnomeShortcut();
+  registerShortcut();
 
   // Check for saved tokens
   if (authStore.isAuthenticated()) {
     sendStartStatus('Connecting...');
-    console.log('Found saved tokens — validating...');
 
     const refreshed = await apiClient.refreshToken();
     if (refreshed) {
       sendStartStatus('Connected!');
-      console.log('Token refresh successful — opening chat');
 
       // Brief pause so user sees "Connected!"
       await new Promise((r) => setTimeout(r, 600));
       onAuthSuccess();
     } else {
       sendStartStatus('Session expired');
-      console.log('Token refresh failed — showing login');
       await new Promise((r) => setTimeout(r, 800));
 
       if (startWindow && !startWindow.isDestroyed()) {
@@ -469,7 +445,6 @@ app.whenReady().then(async () => {
     }
   } else {
     sendStartStatus('Welcome!');
-    console.log('No saved tokens — showing login');
 
     // Brief splash then login
     await new Promise((r) => setTimeout(r, 1200));
@@ -480,8 +455,6 @@ app.whenReady().then(async () => {
     }
     createLoginWindow();
   }
-
-  console.log('Planly ready');
 });
 
 app.on('before-quit', () => {
@@ -504,6 +477,26 @@ function createTray(): void {
   updateTrayMenu();
 }
 
+// ─── Shortcut Registration ───────────────────────────────────
+
+function registerShortcut(): void {
+  if (process.platform === 'linux') {
+    registerGnomeShortcut();
+  } else {
+    registerElectronShortcut();
+  }
+}
+
+function registerElectronShortcut(): void {
+  globalShortcut.register('CommandOrControl+Alt+J', () => {
+    toggleChatWindow();
+  });
+
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
+  });
+}
+
 // ─── GNOME Shortcut Registration ────────────────────────────
 
 function registerGnomeShortcut(): void {
@@ -518,7 +511,6 @@ function registerGnomeShortcut(): void {
   fs.writeFileSync(pidFile, String(process.pid));
 
   process.on('SIGUSR1', () => {
-    console.log('SIGUSR1 received — toggling chat');
     toggleChatWindow();
   });
 
@@ -561,8 +553,7 @@ fi
     execSync(`gsettings set ${base}:${schemaPath} command '${toggleScript}'`);
     execSync(`gsettings set ${base}:${schemaPath} binding '<Ctrl><Alt>j'`);
 
-    console.log('GNOME shortcut Ctrl+Alt+J registered (PID signal mode)');
   } catch (err) {
-    console.log('Could not register GNOME shortcut:', (err as Error).message);
+    console.error('Could not register GNOME shortcut:', (err as Error).message);
   }
 }

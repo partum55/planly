@@ -12,28 +12,27 @@ export interface ScreenshotResult {
 }
 
 /**
- * Capture a screenshot on Wayland (GNOME).
+ * Capture a screenshot on the current platform.
  *
- * Strategy order:
- * 1. gnome-screenshot (most reliable on GNOME/Wayland)
- * 2. grim (wlroots-based compositors)
- * 3. Fallback error
+ * - Linux:   gnome-screenshot → grim fallback
+ * - macOS:   screencapture -x (silent, built-in)
+ * - Windows: PowerShell + System.Drawing (no external tools)
  */
 export async function captureScreenshot(): Promise<ScreenshotResult> {
   const tmpFile = path.join(os.tmpdir(), `planly-screenshot-${Date.now()}.png`);
 
-  try {
-    // Try gnome-screenshot first (works on GNOME + Wayland)
-    await execFileAsync('gnome-screenshot', ['-f', tmpFile]);
-  } catch {
-    try {
-      // Try grim (wlroots/sway)
-      await execFileAsync('grim', [tmpFile]);
-    } catch {
-      throw new Error(
-        'Screenshot failed. Install gnome-screenshot or grim for Wayland support.'
-      );
-    }
+  switch (process.platform) {
+    case 'linux':
+      await captureLinux(tmpFile);
+      break;
+    case 'darwin':
+      await captureMacOS(tmpFile);
+      break;
+    case 'win32':
+      await captureWindows(tmpFile);
+      break;
+    default:
+      throw new Error(`Unsupported platform: ${process.platform}`);
   }
 
   const imageBuffer = await fs.promises.readFile(tmpFile);
@@ -46,4 +45,51 @@ export async function captureScreenshot(): Promise<ScreenshotResult> {
     imageBase64,
     timestamp: new Date().toISOString(),
   };
+}
+
+async function captureLinux(tmpFile: string): Promise<void> {
+  try {
+    await execFileAsync('gnome-screenshot', ['-f', tmpFile]);
+  } catch {
+    try {
+      await execFileAsync('grim', [tmpFile]);
+    } catch {
+      throw new Error(
+        'Screenshot failed. Install gnome-screenshot or grim for Wayland support.'
+      );
+    }
+  }
+}
+
+async function captureMacOS(tmpFile: string): Promise<void> {
+  try {
+    await execFileAsync('screencapture', ['-x', tmpFile]);
+  } catch {
+    throw new Error('Screenshot failed. screencapture is not available.');
+  }
+}
+
+async function captureWindows(tmpFile: string): Promise<void> {
+  const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+$bitmap.Save('${tmpFile.replace(/\\/g, '\\\\')}')
+$graphics.Dispose()
+$bitmap.Dispose()
+`.trim();
+
+  try {
+    await execFileAsync('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      psScript,
+    ]);
+  } catch {
+    throw new Error('Screenshot failed. PowerShell screenshot capture is not available.');
+  }
 }
