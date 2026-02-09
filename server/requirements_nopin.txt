@@ -1,0 +1,37 @@
+# FastAPI
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+email-validator
+
+# Database
+supabase
+psycopg2-binary
+gotrue
+
+# Authentication
+pyjwt
+bcrypt
+python-multipart
+
+# LLM
+httpx
+
+# Google Calendar
+google-auth
+google-auth-httplib2
+google-api-python-client
+
+# External APIs
+googlemaps
+
+# Utilities
+python-dotenv
+dateparser
+pytz
+tenacity
+
+# Testing
+pytest
+pytest-asyncio
