@@ -88,21 +88,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libfuse2
 
+      # Code signing: CSC_IDENTITY_AUTO_DISCOVERY=false prevents
+      # electron-builder from looking for certs. To enable signing,
+      # add WIN_CSC_LINK / MAC_CSC_LINK secrets and update this step.
+      # See desktop-app/BUILD.md for details.
       - name: Build installer
+        shell: bash
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
-          # ── Code signing (optional — build works without these) ──
-          # Windows
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          # macOS
-          CSC_LINK_MAC: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD_MAC: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Skip notarization when certs are not available
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: List build output
         shell: bash
