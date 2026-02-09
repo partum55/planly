@@ -28,7 +28,7 @@ class Message(BaseModel):
 class ConversationContext(BaseModel):
     """Conversation context with parsed information"""
     messages: list[Message]
-    participants: dict[int, TelegramUser] = {}
-    consent_signals: dict[int, str] = {}  # user_id -> 'accepted' | 'declined'
+    participants: dict[str, dict] = {}  # str(user_id) or username -> participant info
+    consent_signals: dict[str, str] = {}  # str(user_id) or username -> 'accepted' | 'declined'
     time_references: list[str] = []
     mention_message: Optional[str] = None

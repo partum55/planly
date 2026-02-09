@@ -2,7 +2,7 @@
 from typing import Dict, Any, Optional
 import logging
 
-from tools.base import BaseTool, ToolSchema, ToolParameter
+from tools.base import BaseTool, ToolSchema, ToolParameter, ToolMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +13,23 @@ class RestaurantSearchTool(BaseTool):
     def __init__(self, places_client=None):
         self.places_client = places_client
 
-    @property
-    def schema(self) -> ToolSchema:
+    def _build_schema(self) -> ToolSchema:
         return ToolSchema(
             name="restaurant_search",
-            description="Search for restaurants by location, cuisine, and other criteria",
+            description=(
+                "Search for restaurants by location, cuisine type, and price range. "
+                "Uses Google Places API when configured, otherwise returns clearly-tagged "
+                "mock/placeholder data. Returns up to max_results restaurants (default 5) "
+                "sorted by relevance. Each result includes name, address, rating, price "
+                "level, cuisine type, phone number, and URL. Returns an empty list if "
+                "no matches are found."
+            ),
+            metadata=ToolMetadata(
+                destructive_hint=False,
+                read_only_hint=True,
+                idempotent_hint=True,
+                open_world_hint=True,
+            ),
             parameters=[
                 ToolParameter(
                     name="location",
@@ -118,6 +130,7 @@ class RestaurantSearchTool(BaseTool):
 
         return {
             'success': True,
+            'mock': True,
             'restaurants': mock_restaurants,
             'result_count': len(mock_restaurants)
         }

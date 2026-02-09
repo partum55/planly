@@ -19,48 +19,25 @@ async def database_health():
     try:
         supabase = get_supabase()
 
-        # Try to query users table
-        try:
-            response = supabase.table('users').select('id').limit(1).execute()
-            users_table_exists = True
-            users_count = len(response.data) if response.data else 0
-        except Exception as e:
-            users_table_exists = False
-            users_count = 0
-            logger.error(f"Users table error: {e}")
-
-        # Try to query conversations table
-        try:
-            response = supabase.table('conversations').select('id').limit(1).execute()
-            conversations_table_exists = True
-        except Exception as e:
-            conversations_table_exists = False
-            logger.error(f"Conversations table error: {e}")
-
-        # Check if schema is set up
-        schema_ready = users_table_exists and conversations_table_exists
+        # Verify core tables are reachable (details logged server-side only)
+        tables_ok = True
+        for table in ("users", "conversations"):
+            try:
+                supabase.table(table).select("id").limit(1).execute()
+            except Exception as e:
+                tables_ok = False
+                logger.error(f"Table check failed for '{table}': {e}")
 
         return {
-            "status": "ok" if schema_ready else "degraded",
-            "database": {
-                "connected": True,
-                "schema_ready": schema_ready,
-                "tables": {
-                    "users": users_table_exists,
-                    "conversations": conversations_table_exists
-                },
-                "users_count": users_count
-            },
-            "message": "Database schema ready" if schema_ready else "Database tables not found. Please run server/database/supabase_schema.sql"
+            "status": "ok" if tables_ok else "degraded",
+            "database_connected": True,
+            "schema_ready": tables_ok,
         }
 
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         return {
             "status": "error",
-            "database": {
-                "connected": False,
-                "error": str(e)
-            },
-            "message": "Database connection failed. Check SUPABASE_URL and SUPABASE_KEY in .env"
+            "database_connected": False,
+            "schema_ready": False,
         }

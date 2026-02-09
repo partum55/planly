@@ -27,7 +27,7 @@ class UserProfileResponse(BaseModel):
 
 class ProposedAction(BaseModel):
     action_id: str
-    tool: str
+    tool_name: str
     description: str
     parameters: Dict[str, Any]
 
@@ -56,6 +56,8 @@ class TimePickerBlock(BaseModel):
 class ErrorBlock(BaseModel):
     type: Literal["error"]
     message: str
+    error_code: Optional[str] = None
+    retryable: bool = False
 
 
 ResponseBlock = Union[TextBlock, ActionCardsBlock, CalendarPickerBlock, TimePickerBlock, ErrorBlock]
@@ -69,7 +71,7 @@ class AgentProcessResponse(BaseModel):
 
 class ActionResult(BaseModel):
     action_id: str
-    tool: str
+    tool_name: str
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None

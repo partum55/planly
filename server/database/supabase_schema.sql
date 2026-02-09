@@ -151,3 +151,23 @@ COMMENT ON TABLE conversations IS 'Telegram groups and desktop screenshot sessio
 COMMENT ON TABLE messages IS 'Rolling 1-hour message window';
 COMMENT ON TABLE events IS 'Created calendar events';
 COMMENT ON TABLE agent_actions IS 'Audit log of all agent actions';
+
+-- Action plan cache (replaces in-memory dict for multi-worker safety)
+CREATE TABLE IF NOT EXISTS action_plan_cache (
+    conversation_id TEXT PRIMARY KEY,
+    intent_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
+    idempotency_key TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_action_plan_cache_created ON action_plan_cache(created_at);
+
+-- Auto-cleanup expired cache entries (older than 15 minutes)
+CREATE OR REPLACE FUNCTION cleanup_expired_action_plans()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM action_plan_cache WHERE created_at < NOW() - INTERVAL '15 minutes';
+END;
+$$ LANGUAGE plpgsql;

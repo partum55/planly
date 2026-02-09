@@ -1,4 +1,5 @@
-"""Event repository for database operations"""
+"""Event repository for database operations."""
+from asyncio import to_thread
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class EventRepository:
-    """Handle event database operations"""
+    """Handle event database operations."""
 
     def __init__(self, supabase: Client):
         self.supabase = supabase
@@ -24,24 +25,26 @@ class EventRepository:
         activity_name: Optional[str] = None,
         location: Optional[str] = None,
         calendar_event_id: Optional[str] = None,
-        activity_details: Optional[dict] = None
+        activity_details: Optional[dict] = None,
     ) -> dict:
-        """Create a new event"""
+        """Create a new event."""
         try:
             data = {
-                'conversation_id': str(conversation_id),
-                'created_by_user_id': str(user_id),
-                'activity_type': activity_type,
-                'activity_name': activity_name,
-                'activity_details': activity_details or {},
-                'participants': participants,
-                'event_time': event_time.isoformat(),
-                'location': location,
-                'calendar_event_id': calendar_event_id,
-                'status': 'active'
+                "conversation_id": str(conversation_id),
+                "created_by_user_id": str(user_id),
+                "activity_type": activity_type,
+                "activity_name": activity_name,
+                "activity_details": activity_details or {},
+                "participants": participants,
+                "event_time": event_time.isoformat(),
+                "location": location,
+                "calendar_event_id": calendar_event_id,
+                "status": "active",
             }
 
-            response = self.supabase.table('events').insert(data).execute()
+            response = await to_thread(
+                lambda: self.supabase.table("events").insert(data).execute()
+            )
             return response.data[0] if response.data else None
 
         except Exception as e:
@@ -50,14 +53,17 @@ class EventRepository:
 
     async def get_events_by_conversation(
         self,
-        conversation_id: UUID
+        conversation_id: UUID,
     ) -> List[dict]:
-        """Get all events for a conversation"""
+        """Get all events for a conversation."""
         try:
-            response = self.supabase.table('events').select('*').eq(
-                'conversation_id', str(conversation_id)
-            ).order('event_time', desc=True).execute()
-
+            response = await to_thread(
+                lambda: self.supabase.table("events")
+                .select("*")
+                .eq("conversation_id", str(conversation_id))
+                .order("event_time", desc=True)
+                .execute()
+            )
             return response.data if response.data else []
         except Exception as e:
             logger.error(f"Error getting events: {e}")
@@ -67,20 +73,21 @@ class EventRepository:
         self,
         user_id: UUID,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
     ) -> List[dict]:
-        """Get events created by or including a user"""
+        """Get events created by or including a user."""
         try:
-            query = self.supabase.table('events').select('*').eq(
-                'created_by_user_id', str(user_id)
-            )
+            def _query():
+                q = self.supabase.table("events").select("*").eq(
+                    "created_by_user_id", str(user_id)
+                )
+                if start_date:
+                    q = q.gte("event_time", start_date.isoformat())
+                if end_date:
+                    q = q.lte("event_time", end_date.isoformat())
+                return q.order("event_time").execute()
 
-            if start_date:
-                query = query.gte('event_time', start_date.isoformat())
-            if end_date:
-                query = query.lte('event_time', end_date.isoformat())
-
-            response = query.order('event_time').execute()
+            response = await to_thread(_query)
             return response.data if response.data else []
 
         except Exception as e:
@@ -98,23 +105,25 @@ class EventRepository:
         response_text: Optional[str],
         success: bool,
         execution_time_ms: int,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
     ):
-        """Log an agent action"""
+        """Log an agent action."""
         try:
             data = {
-                'conversation_id': str(conversation_id),
-                'user_id': str(user_id) if user_id else None,
-                'trigger_source': trigger_source,
-                'action_type': action_type,
-                'intent_data': intent_data,
-                'tool_calls': tool_calls,
-                'response_text': response_text,
-                'success': success,
-                'error_message': error_message,
-                'execution_time_ms': execution_time_ms
+                "conversation_id": str(conversation_id),
+                "user_id": str(user_id) if user_id else None,
+                "trigger_source": trigger_source,
+                "action_type": action_type,
+                "intent_data": intent_data,
+                "tool_calls": tool_calls,
+                "response_text": response_text,
+                "success": success,
+                "error_message": error_message,
+                "execution_time_ms": execution_time_ms,
             }
 
-            self.supabase.table('agent_actions').insert(data).execute()
+            await to_thread(
+                lambda: self.supabase.table("agent_actions").insert(data).execute()
+            )
         except Exception as e:
             logger.error(f"Error logging action: {e}")

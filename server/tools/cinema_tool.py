@@ -3,19 +3,30 @@ from typing import Dict, Any
 from datetime import datetime, timedelta
 import logging
 
-from tools.base import BaseTool, ToolSchema, ToolParameter
+from tools.base import BaseTool, ToolSchema, ToolParameter, ToolMetadata
 
 logger = logging.getLogger(__name__)
 
 
 class CinemaSearchTool(BaseTool):
-    """Mock cinema API for demonstration"""
+    """Search for movies and showtimes"""
 
-    @property
-    def schema(self) -> ToolSchema:
+    def _build_schema(self) -> ToolSchema:
         return ToolSchema(
             name="cinema_search",
-            description="Search for movies and showtimes at nearby cinemas",
+            description=(
+                "Search for movies and showtimes at cinemas near a given location. "
+                "Optionally filter by date (ISO8601) and/or movie title. Returns a list "
+                "of movies with genre, rating, available showtimes, theater name, address, "
+                "and ticket price. Currently returns clearly-tagged mock/placeholder data "
+                "when no real cinema API is configured."
+            ),
+            metadata=ToolMetadata(
+                destructive_hint=False,
+                read_only_hint=True,
+                idempotent_hint=True,
+                open_world_hint=True,
+            ),
             parameters=[
                 ToolParameter(
                     name="location",
@@ -91,6 +102,7 @@ class CinemaSearchTool(BaseTool):
 
             return {
                 'success': True,
+                'mock': True,
                 'movies': mock_movies,
                 'date': target_date.strftime('%Y-%m-%d')
             }

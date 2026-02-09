@@ -44,7 +44,7 @@ async def register(request: RegisterRequest):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        logger.error(f"Registration error: {e}")
+        logger.error(f"Registration error: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Registration failed")
 
 
@@ -70,7 +70,7 @@ async def login(request: LoginRequest):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except Exception as e:
-        logger.error(f"Login error: {e}")
+        logger.error(f"Login error: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login failed")
 
 
@@ -178,7 +178,8 @@ async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
             user, access_token, refresh_token = await auth_service.register_user(
                 email=user_info['email'],
                 password=None,  # No password for OAuth users
-                full_name=user_info.get('name')
+                full_name=user_info.get('name'),
+                oauth_provider='google',
             )
             logger.info(f"Created new user via Google OAuth: {user_info['email']}")
         else:
@@ -194,7 +195,7 @@ async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
 
     except ValueError as e:
         logger.error(f"Google OAuth configuration error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="OAuth configuration error")
     except Exception as e:
         logger.error(f"Google OAuth callback error: {e}", exc_info=True)
         raise HTTPException(
@@ -218,24 +219,24 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
 
 
 @router.post("/link-telegram")
-async def link_telegram(request: LinkTelegramRequest):
+async def link_telegram(
+    request: LinkTelegramRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Link Telegram account to user (no auth required per AGENT_1_TASKS spec)
-    Telegram bot /link command uses this
+    Link Telegram account to the authenticated user.
+
+    Requires JWT authentication to prevent any unauthenticated caller
+    from linking arbitrary Telegram accounts to arbitrary emails.
     """
     try:
         supabase = get_supabase()
         user_repo = UserRepository(supabase)
 
-        # Find user by email
-        user = await user_repo.get_by_email(request.email)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found with that email")
-
-        # Link Telegram account
+        # Use the authenticated user's ID (ignore request.email for safety)
         auth_service = AuthService(user_repo)
         success = await auth_service.link_telegram_account(
-            user_id=UUID(user['id']),
+            user_id=UUID(current_user['id']),
             telegram_id=request.telegram_id,
             telegram_username=request.telegram_username
         )
@@ -245,14 +246,17 @@ async def link_telegram(request: LinkTelegramRequest):
 
         return {
             "success": True,
-            "user_id": str(user['id'])
+            "user_id": str(current_user['id'])
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Link Telegram error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to link Telegram account")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to link Telegram account",
+        )
 
 
 @router.get("/verify")

@@ -1,4 +1,5 @@
 """Google Calendar API client"""
+import asyncio
 import os
 from datetime import datetime
 from typing import Optional
@@ -74,10 +75,14 @@ class GoogleCalendarClient:
         if attendees:
             event['attendees'] = [{'email': email} for email in attendees]
 
-        created_event = self.service.events().insert(
-            calendarId=self.calendar_id,
-            body=event
-        ).execute()
+        # Google API client is synchronous — run in a thread to avoid
+        # blocking the asyncio event loop.
+        created_event = await asyncio.to_thread(
+            self.service.events().insert(
+                calendarId=self.calendar_id,
+                body=event
+            ).execute
+        )
 
         return created_event
 
@@ -86,11 +91,13 @@ class GoogleCalendarClient:
         if not self.service:
             return []
 
-        events_result = self.service.events().list(
-            calendarId=self.calendar_id,
-            maxResults=max_results,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
+        events_result = await asyncio.to_thread(
+            self.service.events().list(
+                calendarId=self.calendar_id,
+                maxResults=max_results,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute
+        )
 
         return events_result.get('items', [])
