@@ -65,12 +65,35 @@ class ConversationRepository:
             logger.error(f"Error inserting message: {e}", exc_info=True)
             return False
 
+    async def insert_messages_batch(
+        self, conversation_id: UUID, messages: List[dict]
+    ) -> bool:
+        """Insert multiple messages in a single DB round-trip."""
+        if not messages:
+            return True
+        try:
+            rows = [
+                {"conversation_id": str(conversation_id), **msg}
+                for msg in messages
+            ]
+            await to_thread(
+                lambda: self.supabase.table("messages").insert(rows).execute()
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error batch-inserting messages: {e}", exc_info=True)
+            return False
+
     async def get_messages_since(
         self,
         conversation_id: UUID,
         cutoff_time: datetime,
     ) -> List[dict]:
-        """Get messages since a specific time."""
+        """Get messages since a specific time.
+
+        Raises on database errors so callers can distinguish 'no messages'
+        from 'database is down'.
+        """
         try:
             response = await to_thread(
                 lambda: self.supabase.table("messages")
@@ -83,7 +106,7 @@ class ConversationRepository:
             return response.data if response.data else []
         except Exception as e:
             logger.error(f"Error getting messages: {e}")
-            return []
+            raise
 
     async def cleanup_old_messages(self, conversation_id: Optional[UUID] = None):
         """Delete messages older than 1 hour."""
@@ -104,7 +127,10 @@ class ConversationRepository:
             logger.error(f"Error cleaning up messages: {e}")
 
     async def get_conversation_by_id(self, conversation_id: UUID) -> Optional[dict]:
-        """Get conversation by ID."""
+        """Get conversation by ID.
+
+        Returns None if not found. Raises on database errors.
+        """
         try:
             response = await to_thread(
                 lambda: self.supabase.table("conversations")
@@ -115,4 +141,4 @@ class ConversationRepository:
             return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error getting conversation: {e}")
-            return None
+            raise

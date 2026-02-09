@@ -82,6 +82,11 @@ def get_agent() -> PlanlyAgent:
     Repositories are lightweight wrappers around the Supabase client,
     so creating them per-request is fine. The expensive objects
     (OllamaClient, ToolRegistry, GoogleCalendarClient) are shared.
+
+    WARNING: ContextManager, ReasoningEngine, and repositories are created
+    per-request and MUST remain stateless.  Do NOT add mutable instance
+    state (caches, counters, etc.) to these classes — it will not be shared
+    across requests and will silently break under concurrency.
     """
     supabase = get_supabase()
     conversation_repo = ConversationRepository(supabase)

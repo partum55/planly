@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 import hashlib
 import logging
 import time
@@ -61,50 +62,70 @@ def create_app() -> FastAPI:
     )
 
     # -----------------------------------------------------------------------
-    # Simple in-process rate limiter (per-user, per-minute)
+    # Simple in-process rate limiter (per-user + per-IP, per-minute)
     # Uses a bounded dict with periodic eviction to prevent memory leaks.
     # For production at scale, replace with Redis-backed slowapi.
+    # Sharded into N locks to reduce contention under concurrency.
     # -----------------------------------------------------------------------
-    _MAX_RATE_BUCKETS = 10_000  # cap on tracked tokens
+    _MAX_RATE_BUCKETS = 10_000
     _rate_buckets: dict[str, list[float]] = {}
     _last_eviction: float = time.time()
+    _NUM_SHARDS = 16
+    _rate_locks = [asyncio.Lock() for _ in range(_NUM_SHARDS)]
     RATE_LIMIT = int(getattr(settings, "RATE_LIMIT_PER_MINUTE", 60))
+    # Stricter limit for unauthenticated / webhook endpoints
+    RATE_LIMIT_UNAUTH = max(RATE_LIMIT // 3, 20)
 
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
         nonlocal _last_eviction
-        now = time.time()
 
-        # Periodic full eviction every 5 minutes to reclaim abandoned keys
-        if now - _last_eviction > 300:
-            stale_keys = [
-                k for k, v in _rate_buckets.items()
-                if not v or (now - v[-1]) > 120
-            ]
-            for k in stale_keys:
-                del _rate_buckets[k]
-            # Hard cap — if still too large, drop oldest half
-            if len(_rate_buckets) > _MAX_RATE_BUCKETS:
-                sorted_keys = sorted(_rate_buckets, key=lambda k: _rate_buckets[k][-1] if _rate_buckets[k] else 0)
-                for k in sorted_keys[: len(sorted_keys) // 2]:
-                    del _rate_buckets[k]
-            _last_eviction = now
-
-        # Only rate-limit authenticated endpoints
+        # Determine rate-limit key: Bearer token hash for authenticated
+        # requests, client IP for unauthenticated ones (webhooks, health, etc.)
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
-            token_hash = hashlib.sha256(auth_header.encode()).hexdigest()[:16]
-            bucket = _rate_buckets.get(token_hash, [])
-            # Prune old entries
+            bucket_key = "tok:" + hashlib.sha256(auth_header.encode()).hexdigest()[:16]
+            limit = RATE_LIMIT
+        else:
+            client_ip = request.client.host if request.client else "unknown"
+            bucket_key = "ip:" + hashlib.sha256(client_ip.encode()).hexdigest()[:16]
+            limit = RATE_LIMIT_UNAUTH
+
+        # Skip rate limiting for health checks
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        shard_idx = hash(bucket_key) % _NUM_SHARDS
+        async with _rate_locks[shard_idx]:
+            now = time.time()
+
+            # Periodic full eviction every 5 minutes to reclaim abandoned keys
+            if now - _last_eviction > 300:
+                stale_keys = [
+                    k for k, v in _rate_buckets.items()
+                    if not v or (now - v[-1]) > 120
+                ]
+                for k in stale_keys:
+                    del _rate_buckets[k]
+                if len(_rate_buckets) > _MAX_RATE_BUCKETS:
+                    sorted_keys = sorted(
+                        _rate_buckets,
+                        key=lambda k: _rate_buckets[k][-1] if _rate_buckets[k] else 0,
+                    )
+                    for k in sorted_keys[: len(sorted_keys) // 2]:
+                        del _rate_buckets[k]
+                _last_eviction = now
+
+            bucket = _rate_buckets.get(bucket_key, [])
             bucket = [t for t in bucket if now - t < 60]
-            if len(bucket) >= RATE_LIMIT:
+            if len(bucket) >= limit:
                 return Response(
                     content='{"detail":"Rate limit exceeded. Try again later."}',
                     status_code=429,
                     media_type="application/json",
                 )
             bucket.append(now)
-            _rate_buckets[token_hash] = bucket
+            _rate_buckets[bucket_key] = bucket
 
         response = await call_next(request)
         return response

@@ -103,9 +103,15 @@ class ReasoningEngine:
 
             return intent_response
 
+        except (TimeoutError, ConnectionError, OSError):
+            raise
         except Exception as e:
             logger.error(f"Intent extraction error: {e}")
             return self._create_fallback_intent(context)
+
+    def _sanitize_for_prompt(self, text: str) -> str:
+        """Escape XML-like tags in data before injecting into prompt templates."""
+        return text.replace("<", "&lt;").replace(">", "&gt;")
 
     async def create_action_plan(self, intent: Intent) -> ActionPlan:
         """
@@ -118,7 +124,7 @@ class ReasoningEngine:
             schemas_text = json.dumps(tool_schemas, indent=2)
 
             prompt = TOOL_PLANNING_PROMPT.format(
-                intent=intent.model_dump_json(indent=2),
+                intent=self._sanitize_for_prompt(intent.model_dump_json(indent=2)),
                 tool_schemas=schemas_text,
             )
 
@@ -176,8 +182,10 @@ class ReasoningEngine:
                 intent_json = intent.model_dump_json(indent=2)
 
             prompt = RESPONSE_COMPOSITION_PROMPT.format(
-                intent=intent_json,
-                results=json.dumps(results, indent=2, default=str),
+                intent=self._sanitize_for_prompt(intent_json),
+                results=self._sanitize_for_prompt(
+                    json.dumps(results, indent=2, default=str)
+                ),
             )
 
             response = await self.ollama.generate(

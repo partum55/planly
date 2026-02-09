@@ -153,21 +153,29 @@ COMMENT ON TABLE events IS 'Created calendar events';
 COMMENT ON TABLE agent_actions IS 'Audit log of all agent actions';
 
 -- Action plan cache (replaces in-memory dict for multi-worker safety)
+-- The 'status' column enables atomic consume: UPDATE ... SET status='consumed'
+-- WHERE status='pending' serializes via row-level locking and prevents
+-- double-execution of destructive actions under concurrent requests.
 CREATE TABLE IF NOT EXISTS action_plan_cache (
     conversation_id TEXT PRIMARY KEY,
     intent_data JSONB NOT NULL DEFAULT '{}'::jsonb,
     tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
     idempotency_key TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'consumed'
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '15 minutes'
 );
 
 CREATE INDEX idx_action_plan_cache_created ON action_plan_cache(created_at);
+CREATE INDEX idx_action_plan_cache_status ON action_plan_cache(conversation_id, status)
+    WHERE status = 'pending';
 
--- Auto-cleanup expired cache entries (older than 15 minutes)
+-- Auto-cleanup consumed or expired cache entries
 CREATE OR REPLACE FUNCTION cleanup_expired_action_plans()
 RETURNS void AS $$
 BEGIN
-    DELETE FROM action_plan_cache WHERE created_at < NOW() - INTERVAL '15 minutes';
+    DELETE FROM action_plan_cache
+    WHERE created_at < NOW() - INTERVAL '15 minutes'
+       OR status = 'consumed';
 END;
 $$ LANGUAGE plpgsql;

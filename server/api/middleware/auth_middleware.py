@@ -96,6 +96,11 @@ async def get_current_user(
     return user
 
 
+def invalidate_user_cache(user_id: str) -> None:
+    """Remove a user from the auth cache, e.g. after deactivation or role change."""
+    _USER_CACHE.pop(user_id, None)
+
+
 async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Optional[dict]:

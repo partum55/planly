@@ -75,8 +75,16 @@ class TestDetectConsentSignals:
         result = ctx._detect_consent_signals(msgs)
         assert result["1"] == "accepted"
 
-    def test_simple_no(self, ctx):
+    def test_simple_no_is_not_matched(self, ctx):
+        """Bare 'no' is intentionally excluded — too ambiguous
+        (e.g. 'no worries, I'll be there'). Use phrases like
+        'can't make it' instead."""
         msgs = [_msg("no")]
+        result = ctx._detect_consent_signals(msgs)
+        assert "1" not in result
+
+    def test_cant_make_it_as_decline(self, ctx):
+        msgs = [_msg("can't make it")]
         result = ctx._detect_consent_signals(msgs)
         assert result["1"] == "declined"
 
@@ -92,11 +100,11 @@ class TestDetectConsentSignals:
         assert result["1"] == "declined"
 
     def test_sorry_not_decline_when_part_of_acceptance(self, ctx):
-        """Edge case: both accept and decline keywords present."""
+        """'sorry' alone is no longer a decline keyword, so 'sorry for the
+        delay, I'm in' should be detected as acceptance."""
         msgs = [_msg("sorry for the delay, I'm in")]
         result = ctx._detect_consent_signals(msgs)
-        # Both accept and decline regex match; decline overrides (checked second)
-        assert result["1"] in ("accepted", "declined")
+        assert result["1"] == "accepted"
 
     def test_multiple_users(self, ctx):
         msgs = [

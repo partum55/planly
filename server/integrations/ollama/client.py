@@ -34,10 +34,24 @@ def _extract_json_object(text: str) -> str:
         except json.JSONDecodeError:
             pass  # fall through to brace-matching
 
-    # 2. Brace-matching with depth tracking (handles nested braces in strings)
+    # 2. Brace-matching with depth tracking and string awareness
     depth = 0
     start = None
+    in_string = False
+    escape_next = False
     for i, ch in enumerate(text):
+        if escape_next:
+            escape_next = False
+            continue
+        if in_string:
+            if ch == '\\':
+                escape_next = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
         if ch == "{":
             if depth == 0:
                 start = i

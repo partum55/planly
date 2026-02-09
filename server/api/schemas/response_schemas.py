@@ -1,6 +1,6 @@
 """API response schemas"""
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any, Union, Literal
+from pydantic import BaseModel, Field
+from typing import Annotated, Optional, List, Dict, Any, Union, Literal
 from uuid import UUID
 
 
@@ -43,16 +43,6 @@ class ActionCardsBlock(BaseModel):
     actions: List[ProposedAction]
 
 
-class CalendarPickerBlock(BaseModel):
-    type: Literal["calendar_picker"]
-    prompt: str
-
-
-class TimePickerBlock(BaseModel):
-    type: Literal["time_picker"]
-    prompt: str
-
-
 class ErrorBlock(BaseModel):
     type: Literal["error"]
     message: str
@@ -60,7 +50,14 @@ class ErrorBlock(BaseModel):
     retryable: bool = False
 
 
-ResponseBlock = Union[TextBlock, ActionCardsBlock, CalendarPickerBlock, TimePickerBlock, ErrorBlock]
+# CalendarPickerBlock and TimePickerBlock are planned but not yet emitted by any
+# code path.  They are excluded from ResponseBlock until the backend actually
+# produces them, so that agents don't build UI for capabilities that don't exist.
+
+ResponseBlock = Annotated[
+    Union[TextBlock, ActionCardsBlock, ErrorBlock],
+    Field(discriminator='type'),
+]
 
 
 class AgentProcessResponse(BaseModel):

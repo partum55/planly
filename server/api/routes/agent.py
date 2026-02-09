@@ -2,6 +2,7 @@
 from asyncio import to_thread
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, status, Header
+from fastapi.responses import JSONResponse
 from uuid import UUID
 from typing import Optional
 import json
@@ -45,8 +46,9 @@ async def _cache_action_plan(
         "intent_data": intent or {},
         "tool_calls": tools,
         "idempotency_key": idempotency_key,
+        "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": datetime.now(timezone.utc).isoformat(),  # TTL handled on read
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
     }
     # Upsert — if the same conversation already has a cached plan, overwrite it
     await to_thread(
@@ -57,12 +59,13 @@ async def _cache_action_plan(
 
 
 async def _get_cached_plan(conversation_id: str) -> Optional[dict]:
-    """Retrieve a cached action plan.  Returns None if missing or expired (>15 min)."""
+    """Retrieve a cached action plan.  Returns None if missing, consumed, or expired."""
     supabase = get_supabase()
     resp = await to_thread(
         lambda: supabase.table("action_plan_cache")
         .select("*")
         .eq("conversation_id", conversation_id)
+        .eq("status", "pending")
         .execute()
     )
     if not resp.data:
@@ -93,6 +96,33 @@ async def _delete_cached_plan(conversation_id: str) -> None:
     )
 
 
+async def _consume_cached_plan(conversation_id: str) -> Optional[dict]:
+    """Atomically consume a cached action plan.
+
+    Uses UPDATE with a status filter (status='pending' → 'consumed') which is
+    truly atomic in Postgres: two concurrent UPDATEs on the same row serialize
+    via row-level locking, so only the first caller sees the row returned.
+    Returns None if the plan is missing, expired, or already consumed.
+    """
+    supabase = get_supabase()
+    resp = await to_thread(
+        lambda: supabase.table("action_plan_cache")
+        .update({"status": "consumed"})
+        .eq("conversation_id", conversation_id)
+        .eq("status", "pending")
+        .execute()
+    )
+    if not resp.data:
+        return None
+
+    row = resp.data[0]
+    # TTL check — 15 minutes
+    created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - created > timedelta(minutes=15):
+        return None  # Expired
+    return row
+
+
 def _compute_idempotency_key(request: AgentProcessRequest) -> str:
     """Deterministic hash of the request payload for idempotency."""
     raw = json.dumps(
@@ -116,11 +146,29 @@ async def list_tools(current_user: dict = Depends(get_current_user)):
     List all available tools with their JSON Schema definitions.
 
     This allows agents to discover capabilities at runtime.
+    Includes an ETag header for cache validation so agents can detect
+    when tool schemas have changed.
     """
     registry = get_tool_registry()
-    return {
-        "tools": registry.get_json_schemas(),
-    }
+    schemas = registry.get_json_schemas()
+    schema_hash = hashlib.sha256(
+        json.dumps(schemas, sort_keys=True).encode()
+    ).hexdigest()[:16]
+    return JSONResponse(
+        content={"tools": schemas},
+        headers={"ETag": f'"{schema_hash}"'},
+    )
+
+
+@router.get("/tools/status")
+async def tools_status(current_user: dict = Depends(get_current_user)):
+    """
+    Report which tools are running with real backends vs mock/placeholder data.
+
+    Agents should check this before presenting tool results as real to users.
+    """
+    registry = get_tool_registry()
+    return {"tools": registry.get_tools_status()}
 
 
 # ---------------------------------------------------------------------------
@@ -183,18 +231,18 @@ async def process_conversation(
                 },
             )
 
-        # Store messages
-        for msg in request.context.messages:
-            await conversation_repo.insert_message(
-                conversation_id,
-                {
-                    "text": msg.text,
-                    "username": msg.username,
-                    "timestamp": msg.timestamp,
-                    "source": request.source,
-                    "is_bot_mention": False,
-                },
-            )
+        # Store messages (batch insert — single DB round-trip)
+        message_rows = [
+            {
+                "text": msg.text,
+                "username": msg.username,
+                "timestamp": msg.timestamp,
+                "source": request.source,
+                "is_bot_mention": False,
+            }
+            for msg in request.context.messages
+        ]
+        await conversation_repo.insert_messages_batch(conversation_id, message_rows)
 
         # Process conversation (O→R→P)
         result = await agent.process_conversation(
@@ -202,6 +250,28 @@ async def process_conversation(
             user_id=UUID(current_user["id"]),
             trigger_source=request.source,
         )
+
+        # Return proper HTTP status for agent errors so agents can
+        # distinguish success from failure via status code alone
+        if result.get("status") == "error":
+            retryable = result.get("error_retryable", False)
+            status_code = 503 if retryable else 500
+            headers = {"Retry-After": "5"} if retryable else {}
+            return JSONResponse(
+                status_code=status_code,
+                content=AgentProcessResponse(
+                    conversation_id=str(conversation_id),
+                    blocks=[
+                        ErrorBlock(
+                            type="error",
+                            message="Something went wrong processing your request.",
+                            error_code=result.get("error_code"),
+                            retryable=retryable,
+                        )
+                    ],
+                ).model_dump(),
+                headers=headers,
+            )
 
         # Cache action plan for later execution
         if result.get("proposed_actions"):
@@ -219,16 +289,19 @@ async def process_conversation(
     except Exception as e:
         logger.error(f"Error processing conversation: {e}", exc_info=True)
         cid = str(conversation_id) if "conversation_id" in dir() else "00000000-0000-0000-0000-000000000000"
-        return AgentProcessResponse(
-            conversation_id=cid,
-            blocks=[
-                ErrorBlock(
-                    type="error",
-                    message="An internal error occurred. Please try again later.",
-                    error_code="internal_error",
-                    retryable=True,
-                )
-            ],
+        return JSONResponse(
+            status_code=500,
+            content=AgentProcessResponse(
+                conversation_id=cid,
+                blocks=[
+                    ErrorBlock(
+                        type="error",
+                        message="An internal error occurred. Please try again later.",
+                        error_code="internal_error",
+                        retryable=True,
+                    )
+                ],
+            ).model_dump(),
         )
 
 
@@ -292,21 +365,15 @@ async def confirm_actions(
     """
     Execute confirmed actions.
 
-    Retrieves the DB-cached action plan, filters to selected action_ids,
-    executes, and returns results.
+    Atomically consumes the DB-cached action plan, filters to selected
+    action_ids, executes, and returns results.  The atomic consume
+    (Postgres DELETE) prevents duplicate execution from concurrent requests.
     """
     try:
         agent = get_agent()
 
-        # Get cached plan from DB
-        plan_data = await _get_cached_plan(str(request.conversation_id))
-        if not plan_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Action plan not found or expired. Please process the conversation first.",
-            )
-
-        # Ownership check: verify the conversation belongs to this user
+        # Ownership check BEFORE consuming the plan — a failed authz check
+        # must not destroy the cached plan for the legitimate owner.
         supabase = get_supabase()
         conversation_repo = ConversationRepository(supabase)
         conversation = await conversation_repo.get_conversation_by_id(
@@ -318,10 +385,18 @@ async def confirm_actions(
                 detail="You do not have access to this conversation",
             )
 
+        # Atomically consume the cached plan (prevents replay / double-execution)
+        plan_data = await _consume_cached_plan(str(request.conversation_id))
+        if not plan_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Action plan not found, expired, or already executed.",
+            )
+
         tool_calls = [
             ToolCall(**tool_data)
             for tool_data in plan_data["tool_calls"]
-            if tool_data["action_id"] in request.action_ids
+            if tool_data.get("action_id") in request.action_ids
         ]
 
         action_plan = ActionPlan(tools=tool_calls)
@@ -334,9 +409,6 @@ async def confirm_actions(
             action_plan=action_plan,
             intent=plan_data.get("intent_data"),
         )
-
-        # Clear cache after successful execution
-        await _delete_cached_plan(str(request.conversation_id))
 
         return ConfirmActionsResponse(
             success=all(r.get("success") for r in result.get("results", [])),

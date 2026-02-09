@@ -26,6 +26,8 @@ class CinemaSearchTool(BaseTool):
                 read_only_hint=True,
                 idempotent_hint=True,
                 open_world_hint=True,
+                requires_auth_hint=False,
+                mock_mode=True,  # No real cinema API configured yet
             ),
             parameters=[
                 ToolParameter(
@@ -108,8 +110,8 @@ class CinemaSearchTool(BaseTool):
             }
 
         except Exception as e:
-            logger.error(f"Cinema search error: {e}")
+            logger.error(f"Cinema search error: {e}", exc_info=True)
             return {
                 'success': False,
-                'error': str(e)
+                'error': "Failed to search cinemas. Please try again.",
             }

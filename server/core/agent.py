@@ -339,7 +339,11 @@ class PlanlyAgent:
         return results
 
     async def _execute_single_tool(self, tool_call) -> dict:
-        """Execute a single tool call with error isolation."""
+        """Execute a single tool call with error isolation.
+
+        Does NOT mutate the tool_call object — returns a standalone result dict.
+        Validates parameters before execution via the tool's schema.
+        """
         tool_start = time.time()
 
         try:
@@ -354,25 +358,32 @@ class PlanlyAgent:
                     'error': f"Tool {tool_call.tool_name} not found",
                 }
 
+            # Validate parameters before execution
+            await tool.validate_parameters(**tool_call.parameters)
+
             logger.info(f"Executing tool: {tool_call.tool_name}")
             result = await tool.execute(**tool_call.parameters)
 
-            tool_call.result = result
-            tool_call.success = result.get('success', False)
-            tool_call.execution_time_ms = int((time.time() - tool_start) * 1000)
+            execution_time_ms = int((time.time() - tool_start) * 1000)
+            logger.info(f"Tool {tool_call.tool_name} completed in {execution_time_ms}ms")
 
             return {
                 'action_id': tool_call.action_id,
                 'tool_name': tool_call.tool_name,
-                'success': tool_call.success,
+                'success': result.get('success', False),
                 'result': result,
             }
 
+        except ValueError as e:
+            logger.error(f"Tool parameter validation failed ({tool_call.tool_name}): {e}")
+            return {
+                'action_id': tool_call.action_id,
+                'tool_name': tool_call.tool_name,
+                'success': False,
+                'error': f"Invalid parameters for '{tool_call.tool_name}': {e}",
+            }
         except Exception as e:
             logger.error(f"Tool execution error ({tool_call.tool_name}): {e}", exc_info=True)
-            tool_call.success = False
-            tool_call.error = str(e)
-
             return {
                 'action_id': tool_call.action_id,
                 'tool_name': tool_call.tool_name,
@@ -396,9 +407,12 @@ def _is_retryable(exc: Exception) -> bool:
     """Classify an exception as transient (retryable) or permanent."""
     if isinstance(exc, _RETRYABLE_ERRORS):
         return True
-    # httpx network errors
     msg = str(exc).lower()
     if any(kw in msg for kw in ("timeout", "connection", "unreachable")):
+        return True
+    # LLM parse failures are often transient (model still loading, incomplete
+    # generation, temporary malformed output).
+    if any(kw in msg for kw in ("json", "parse", "no valid json")):
         return True
     return False
 
@@ -414,10 +428,7 @@ def _classify_error(exc: Exception) -> str:
         return "llm_timeout"
     if "connection" in msg or "unreachable" in msg:
         return "connection_error"
-    if "json" in msg or "parse" in msg:
-        return "parse_error"
+    if "json" in msg or "parse" in msg or "no valid json" in msg:
+        return "llm_parse_error"
     return "internal_error"
 
-
-# Backward-compatible alias
-TelegramAgent = PlanlyAgent
