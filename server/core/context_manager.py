@@ -38,16 +38,21 @@ class ContextManager:
         self.conversation_repo = conversation_repo
         self.window_minutes = window_minutes
 
-        # Consent detection keywords — matched on word boundaries
+        # Consent detection keywords — matched on word boundaries.
+        # Avoid short ambiguous words that commonly appear in non-consent
+        # contexts (e.g. "pass" in "pass by", "ok" in isolation can be
+        # acknowledgement rather than commitment).
         self._accept_keywords = [
             "yes", "sure", "i'm in", "count me in", "+1",
-            "sounds good", "im in", "yeah", "ok", "okay",
+            "sounds good", "im in", "yeah", "okay",
             "definitely", "absolutely", "for sure",
+            "let's do it", "i'll be there", "i'll come",
         ]
         self._decline_keywords = [
-            "no", "can't", "cannot", "not available", "-1",
-            "sorry", "unable", "won't make it", "busy",
-            "have plans", "pass",
+            "can't make it", "cannot", "not available", "-1",
+            "unable", "won't make it", "i'm busy",
+            "have plans", "i'll pass", "count me out",
+            "can't come", "not coming",
         ]
 
         self._accept_re = _compile_word_patterns(self._accept_keywords)

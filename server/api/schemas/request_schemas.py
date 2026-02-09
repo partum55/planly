@@ -1,6 +1,6 @@
 """API request schemas"""
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Literal, Optional, List, Dict, Any
 from uuid import UUID
 import re
 
@@ -46,8 +46,8 @@ class LinkTelegramRequest(BaseModel):
 
 # Agent schemas
 class MessageInput(BaseModel):
-    username: str
-    text: str
+    username: str = Field(..., max_length=256)
+    text: str = Field(..., max_length=10000)
     timestamp: str  # ISO8601
 
 
@@ -66,26 +66,46 @@ class ConversationContextInput(BaseModel):
 
 class AgentProcessRequest(BaseModel):
     """Request format matching AGENT_1_TASKS spec"""
-    user_prompt: str  # What the user typed (required per spec)
-    conversation_id: Optional[str] = None  # Changed to str to match spec
-    source: str = "desktop_screenshot"  # 'desktop_screenshot' or 'telegram'
+    user_prompt: str = Field(..., max_length=5000)
+    conversation_id: Optional[str] = None
+
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_conversation_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            try:
+                UUID(v)
+            except ValueError:
+                raise ValueError("conversation_id must be a valid UUID")
+        return v
+
+    source: Literal["desktop_screenshot", "telegram"] = "desktop_screenshot"
     context: ConversationContextInput
 
 
 class ConfirmActionsRequest(BaseModel):
-    conversation_id: str  # Changed to str to match AGENT_1_TASKS spec
-    action_ids: List[str]
+    conversation_id: str
+    action_ids: List[str] = Field(..., min_length=1)
+
+    @field_validator("conversation_id")
+    @classmethod
+    def validate_conversation_id(cls, v: str) -> str:
+        try:
+            UUID(v)
+        except ValueError:
+            raise ValueError("conversation_id must be a valid UUID")
+        return v
 
 
 # Telegram webhook schema
 class TelegramWebhookRequest(BaseModel):
     group_id: int
-    group_title: Optional[str] = None
+    group_title: Optional[str] = Field(None, max_length=256)
     message_id: int
     user_id: int
-    username: Optional[str] = None
-    first_name: str
-    last_name: Optional[str] = None
-    text: str
+    username: Optional[str] = Field(None, max_length=256)
+    first_name: str = Field(..., max_length=256)
+    last_name: Optional[str] = Field(None, max_length=256)
+    text: str = Field(..., max_length=10000)
     timestamp: str
     is_bot_mention: bool = False

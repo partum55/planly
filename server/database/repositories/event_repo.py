@@ -107,7 +107,11 @@ class EventRepository:
         execution_time_ms: int,
         error_message: Optional[str] = None,
     ):
-        """Log an agent action."""
+        """Log an agent action.
+
+        Best-effort — failures are logged at ERROR level but do not propagate,
+        because audit logging should not break the user-facing flow.
+        """
         try:
             data = {
                 "conversation_id": str(conversation_id),
@@ -126,4 +130,8 @@ class EventRepository:
                 lambda: self.supabase.table("agent_actions").insert(data).execute()
             )
         except Exception as e:
-            logger.error(f"Error logging action: {e}")
+            logger.error(
+                f"AUDIT LOG FAILURE — action log was NOT persisted for "
+                f"conversation={conversation_id} action_type={action_type}: {e}",
+                exc_info=True,
+            )

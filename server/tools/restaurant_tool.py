@@ -13,6 +13,10 @@ class RestaurantSearchTool(BaseTool):
     def __init__(self, places_client=None):
         self.places_client = places_client
 
+    @property
+    def _is_configured(self) -> bool:
+        return self.places_client is not None
+
     def _build_schema(self) -> ToolSchema:
         return ToolSchema(
             name="restaurant_search",
@@ -29,6 +33,8 @@ class RestaurantSearchTool(BaseTool):
                 read_only_hint=True,
                 idempotent_hint=True,
                 open_world_hint=True,
+                requires_auth_hint=True,
+                mock_mode=not self._is_configured,
             ),
             parameters=[
                 ToolParameter(
@@ -98,10 +104,10 @@ class RestaurantSearchTool(BaseTool):
             return self._mock_restaurant_search(location, cuisine, max_results)
 
         except Exception as e:
-            logger.error(f"Restaurant search error: {e}")
+            logger.error(f"Restaurant search error: {e}", exc_info=True)
             return {
                 'success': False,
-                'error': str(e)
+                'error': "Failed to search restaurants. Please try again.",
             }
 
     def _mock_restaurant_search(

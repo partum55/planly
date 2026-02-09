@@ -15,6 +15,10 @@ class CalendarTool(BaseTool):
     def __init__(self, calendar_client: GoogleCalendarClient = None):
         self.calendar_client = calendar_client
 
+    @property
+    def _is_configured(self) -> bool:
+        return self.calendar_client is not None
+
     def _build_schema(self) -> ToolSchema:
         return ToolSchema(
             name="calendar_create_event",
@@ -29,6 +33,8 @@ class CalendarTool(BaseTool):
                 read_only_hint=False,
                 idempotent_hint=False,
                 open_world_hint=True,
+                requires_auth_hint=True,
+                mock_mode=not self._is_configured,
             ),
             parameters=[
                 ToolParameter(
@@ -94,21 +100,15 @@ class CalendarTool(BaseTool):
 
             end_time = start_time + timedelta(minutes=duration_minutes)
 
-            # If calendar client is not initialized (for testing), return mock
+            # Fail explicitly when calendar client is not configured
             if not self.calendar_client:
-                logger.warning("Calendar client not initialized, returning mock event")
+                logger.error("Calendar client not configured — cannot create event")
                 return {
-                    'success': True,
-                    'mock': True,
-                    'event_id': 'mock_event_123',
-                    'event_link': 'https://calendar.google.com/event?eid=mock_event_123',
-                    'event_details': {
-                        'title': title,
-                        'start': start_time.isoformat(),
-                        'end': end_time.isoformat(),
-                        'location': location,
-                        'description': description
-                    }
+                    'success': False,
+                    'error': (
+                        "Google Calendar is not configured. "
+                        "Please link your Google account before creating events."
+                    ),
                 }
 
             # Create event via Google Calendar API
@@ -130,8 +130,8 @@ class CalendarTool(BaseTool):
             }
 
         except Exception as e:
-            logger.error(f"Calendar tool error: {e}")
+            logger.error(f"Calendar tool error: {e}", exc_info=True)
             return {
                 'success': False,
-                'error': str(e)
+                'error': "Failed to create calendar event. Please try again.",
             }

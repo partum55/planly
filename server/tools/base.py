@@ -14,6 +14,8 @@ class ToolMetadata(BaseModel):
     read_only_hint: bool = False     # True if the tool only reads data
     idempotent_hint: bool = False    # True if repeated calls have no extra effect
     open_world_hint: bool = True     # True if the tool interacts with external services
+    requires_auth_hint: bool = False # True if the tool needs external credentials configured
+    mock_mode: bool = False          # True if the tool is currently returning placeholder data
 
 
 class ToolParameter(BaseModel):
@@ -140,3 +142,17 @@ class ToolRegistry:
     def list_tools(self) -> List[str]:
         """List all registered tool names."""
         return list(self._tools.keys())
+
+    def get_tools_status(self) -> List[dict]:
+        """Return operational status for each tool (mock vs real, auth required)."""
+        statuses = []
+        for name, tool in self._tools.items():
+            meta = tool.schema.metadata
+            statuses.append({
+                "name": name,
+                "mock_mode": meta.mock_mode,
+                "requires_auth": meta.requires_auth_hint,
+                "destructive": meta.destructive_hint,
+                "read_only": meta.read_only_hint,
+            })
+        return statuses
