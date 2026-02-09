@@ -7,9 +7,11 @@ import {
   screen,
   nativeImage,
   globalShortcut,
+  shell,
 } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as http from 'http';
 import { captureScreenshot } from './services/screenshot';
 import { extractFromImage } from './services/ocr';
 import { AuthStore } from './services/auth';
@@ -36,6 +38,24 @@ const CHAT_SCREEN_MARGIN = 32;
 const boundsStore = new ElectronStore<{ chatBounds?: WindowBounds }>({
   name: 'window-bounds',
   defaults: {},
+});
+
+// ─── App Settings Store ─────────────────────────────────────
+interface AppSettings {
+  apiUrl: string;
+  ocrLanguage: string;
+  autoScreenshot: boolean;
+  onboardingComplete: boolean;
+}
+
+const settingsStore = new ElectronStore<AppSettings>({
+  name: 'app-settings',
+  defaults: {
+    apiUrl: config.API_BASE_URL,
+    ocrLanguage: 'eng',
+    autoScreenshot: true,
+    onboardingComplete: false,
+  },
 });
 
 function getValidatedChatBounds(): WindowBounds {
@@ -238,73 +258,87 @@ function createChatWindow(): void {
   });
 }
 
-function createOAuthWindow(): Promise<string> {
+function startBrowserOAuth(): Promise<{ access_token: string; refresh_token: string }> {
   return new Promise((resolve, reject) => {
-    let settled = false; // Prevent double resolution (issue 2c)
+    let settled = false;
+    let server: http.Server | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
 
-    const redirectUri = `${config.API_BASE_URL}/auth/google/callback`;
-    const authUrl =
-      'https://accounts.google.com/o/oauth2/v2/auth' +
-      `?client_id=${encodeURIComponent(config.GOOGLE_CLIENT_ID)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      '&response_type=code' +
-      '&scope=openid%20email%20profile' +
-      '&access_type=offline' +
-      '&prompt=consent';
-
-    const oauthWin = new BrowserWindow({
-      width: 500,
-      height: 700,
-      backgroundColor: '#fff',
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
-
-    oauthWin.loadURL(authUrl);
-
-    function tryResolve(code: string): void {
-      if (settled) return;
-      settled = true;
-      oauthWin.close();
-      resolve(code);
+    function cleanup(): void {
+      if (timeout) { clearTimeout(timeout); timeout = null; }
+      if (server) { try { server.close(); } catch { /* ignore */ } server = null; }
     }
 
-    function tryReject(err: Error): void {
+    function settle(result: { access_token: string; refresh_token: string } | null, error?: Error): void {
       if (settled) return;
       settled = true;
-      reject(err);
+      cleanup();
+      if (error) reject(error);
+      else resolve(result!);
     }
 
-    oauthWin.webContents.on('will-redirect', (event, url) => {
-      const parsed = new URL(url);
-      const code = parsed.searchParams.get('code');
-      if (code) {
-        event.preventDefault();
-        tryResolve(code);
+    server = http.createServer((req, res) => {
+      const url = new URL(req.url || '/', `http://127.0.0.1`);
+
+      if (url.pathname !== '/callback') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not found');
         return;
       }
-      const error = parsed.searchParams.get('error');
+
+      const error = url.searchParams.get('error');
       if (error) {
-        event.preventDefault();
-        tryReject(new Error(error));
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
+          <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
+          .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
+          h1{color:#e94560;margin-bottom:0.5rem;}p{color:#a0a0b0;}</style></head>
+          <body><div class="card"><h1>Authentication Failed</h1><p>${error}</p><p>You can close this tab.</p></div></body></html>`);
+        settle(null, new Error(error));
+        return;
       }
+
+      const accessToken = url.searchParams.get('access_token');
+      const refreshToken = url.searchParams.get('refresh_token');
+
+      if (!accessToken || !refreshToken) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
+          <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
+          .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
+          h1{color:#e94560;margin-bottom:0.5rem;}p{color:#a0a0b0;}</style></head>
+          <body><div class="card"><h1>Authentication Failed</h1><p>Missing tokens in response.</p><p>You can close this tab.</p></div></body></html>`);
+        settle(null, new Error('Missing tokens in OAuth callback'));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
+        <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
+        .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
+        h1{color:#0f3460;margin-bottom:0.5rem;}p{color:#a0a0b0;}.check{font-size:3rem;margin-bottom:1rem;}</style></head>
+        <body><div class="card"><div class="check">&#10003;</div><h1>Authentication Successful!</h1><p>You can close this tab and return to Planly.</p></div></body></html>`);
+      settle({ access_token: accessToken, refresh_token: refreshToken });
     });
 
-    oauthWin.webContents.on('will-navigate', (event, url) => {
-      if (url.startsWith(redirectUri)) {
-        const parsed = new URL(url);
-        const code = parsed.searchParams.get('code');
-        if (code) {
-          event.preventDefault();
-          tryResolve(code);
-        }
-      }
+    server.on('error', (err) => {
+      settle(null, new Error(`OAuth callback server error: ${err.message}`));
     });
 
-    oauthWin.on('closed', () => {
-      tryReject(new Error('OAuth window closed'));
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server!.address() as { port: number };
+      const callbackUrl = `http://127.0.0.1:${addr.port}/callback`;
+      const loginUrl = `${config.API_BASE_URL}/auth/google/login?redirect=${encodeURIComponent(callbackUrl)}`;
+
+      appLog('INFO', 'oauth', `Opening system browser for OAuth`, { port: addr.port });
+      shell.openExternal(loginUrl).catch((err) => {
+        settle(null, new Error(`Failed to open browser: ${err.message}`));
+      });
+
+      // 90-second timeout
+      timeout = setTimeout(() => {
+        settle(null, new Error('OAuth timed out — no response within 90 seconds'));
+      }, 90_000);
     });
   });
 }
@@ -561,17 +595,10 @@ ipcMain.handle('auth:register', async (_event, email: string, password: string, 
 
 ipcMain.handle('auth:google-oauth', async () => {
   try {
-    const code = await createOAuthWindow();
-
-    const { default: axios } = await import('axios');
-    const { data } = await axios.post<{ access_token: string; refresh_token: string; user_id: string }>(
-      `${config.API_BASE_URL}/auth/google/callback`,
-      { code }
-    );
-
-    authStore.setTokens(data.access_token, data.refresh_token);
-    await onAuthSuccess(); // issue 2b: await to prevent race with UI
-    return data;
+    const tokens = await startBrowserOAuth();
+    authStore.setTokens(tokens.access_token, tokens.refresh_token);
+    await onAuthSuccess();
+    return tokens;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Google OAuth failed';
     appLog('ERROR', 'auth:google-oauth', msg);
@@ -636,6 +663,24 @@ ipcMain.handle('settings:logout', async () => {
 ipcMain.on('settings:quit', () => {
   isQuitting = true;
   app.quit();
+});
+
+ipcMain.handle('settings:get', () => {
+  return {
+    apiUrl: settingsStore.get('apiUrl'),
+    ocrLanguage: settingsStore.get('ocrLanguage'),
+    autoScreenshot: settingsStore.get('autoScreenshot'),
+    onboardingComplete: settingsStore.get('onboardingComplete'),
+  };
+});
+
+ipcMain.handle('settings:set', (_event, settings: Partial<AppSettings>) => {
+  for (const [key, value] of Object.entries(settings)) {
+    if (key in settingsStore.store) {
+      settingsStore.set(key as keyof AppSettings, value);
+    }
+  }
+  return true;
 });
 
 // ─── Agent IPC Handlers (issue 1b: route through ApiClient with auto-refresh) ──

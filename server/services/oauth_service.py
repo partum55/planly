@@ -1,5 +1,6 @@
 """OAuth service for Google authentication"""
 import httpx
+from urllib.parse import urlencode
 from typing import Dict, Optional
 from config.settings import settings
 import logging
@@ -40,8 +41,7 @@ class GoogleOAuthService:
         if state:
             params["state"] = state
 
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"https://accounts.google.com/o/oauth2/v2/auth?{query}"
+        return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
         self,
