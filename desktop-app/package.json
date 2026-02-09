@@ -37,16 +37,19 @@
     "linux": {
       "target": ["AppImage"],
       "category": "Utility",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "Planly-${version}-linux.${ext}"
     },
     "win": {
       "target": ["nsis"],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "Planly-${version}-win.${ext}"
     },
     "mac": {
       "target": ["dmg"],
       "icon": "build/icon.png",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "artifactName": "Planly-${version}-mac.${ext}"
     },
     "nsis": {
       "oneClick": true,
