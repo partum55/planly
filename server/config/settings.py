@@ -58,8 +58,8 @@ class Settings(BaseSettings):
         "http://localhost:8080",
     ]
 
-    # Telegram webhook secret (REQUIRED — set when calling setWebhook)
-    TELEGRAM_WEBHOOK_SECRET: str
+    # Telegram webhook secret (only needed if using webhook mode, not polling)
+    TELEGRAM_WEBHOOK_SECRET: str = ""
 
     # Rate limiting
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -69,10 +69,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_secrets(self) -> "Settings":
-        if not self.TELEGRAM_WEBHOOK_SECRET or len(self.TELEGRAM_WEBHOOK_SECRET) < 8:
+        if self.TELEGRAM_WEBHOOK_SECRET and len(self.TELEGRAM_WEBHOOK_SECRET) < 8:
             raise ValueError(
-                "TELEGRAM_WEBHOOK_SECRET must be set and at least 8 characters. "
-                "Without it, anyone can inject messages into your context window."
+                "TELEGRAM_WEBHOOK_SECRET must be at least 8 characters when set. "
+                "Without it, the /telegram/webhook endpoint will reject all requests."
             )
         return self
 
