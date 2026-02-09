@@ -20,9 +20,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-WEBSERVER_URL = os.getenv("WEBSERVER_URL", "http://localhost:8000")
-SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+WEBSERVER_URL = os.getenv("WEBSERVER_URL", "http://localhost:8000").strip()
+SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "").strip()
 
 BUFFER_MAX = 50
 BUTTON_LABEL_MAX = 60
