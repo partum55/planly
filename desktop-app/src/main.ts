@@ -9,7 +9,9 @@ import {
   globalShortcut,
 } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { captureScreenshot } from './services/screenshot';
+import { extractFromImage } from './services/ocr';
 import { AuthStore } from './services/auth';
 import { ApiClient } from './services/api-client';
 import { config } from './config';
@@ -18,6 +20,18 @@ import { config } from './config';
 // Silence EPIPE to prevent crash on any console.log/console.error call.
 process.stdout?.on?.('error', () => {});
 process.stderr?.on?.('error', () => {});
+
+// ─── Structured Logger (issue 5a/5b) ───────────────────────
+const logDir = path.join(app.getPath('userData'), 'logs');
+try { fs.mkdirSync(logDir, { recursive: true }); } catch { /* ignore */ }
+const logFile = path.join(logDir, `planly-${new Date().toISOString().slice(0, 10)}.log`);
+
+function appLog(level: 'INFO' | 'WARN' | 'ERROR', context: string, msg: string, meta?: Record<string, unknown>): void {
+  const line = `[${new Date().toISOString()}] [${level}] [${context}] ${msg}${meta ? ' ' + JSON.stringify(meta) : ''}\n`;
+  try { fs.appendFileSync(logFile, line); } catch { /* ignore */ }
+  if (level === 'ERROR') console.error(line.trim());
+  else console.log(line.trim());
+}
 
 // no-sandbox is passed via CLI or .desktop launcher — no appendSwitch needed
 
@@ -156,6 +170,8 @@ function createChatWindow(): void {
 
 function createOAuthWindow(): Promise<string> {
   return new Promise((resolve, reject) => {
+    let settled = false; // Prevent double resolution (issue 2c)
+
     const redirectUri = `${config.API_BASE_URL}/auth/google/callback`;
     const authUrl =
       'https://accounts.google.com/o/oauth2/v2/auth' +
@@ -178,33 +194,47 @@ function createOAuthWindow(): Promise<string> {
 
     oauthWin.loadURL(authUrl);
 
-    oauthWin.webContents.on('will-redirect', (_event, url) => {
+    function tryResolve(code: string): void {
+      if (settled) return;
+      settled = true;
+      oauthWin.close();
+      resolve(code);
+    }
+
+    function tryReject(err: Error): void {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    }
+
+    oauthWin.webContents.on('will-redirect', (event, url) => {
       const parsed = new URL(url);
       const code = parsed.searchParams.get('code');
       if (code) {
-        oauthWin.close();
-        resolve(code);
+        event.preventDefault();
+        tryResolve(code);
+        return;
       }
       const error = parsed.searchParams.get('error');
       if (error) {
-        oauthWin.close();
-        reject(new Error(error));
+        event.preventDefault();
+        tryReject(new Error(error));
       }
     });
 
-    oauthWin.webContents.on('will-navigate', (_event, url) => {
+    oauthWin.webContents.on('will-navigate', (event, url) => {
       if (url.startsWith(redirectUri)) {
         const parsed = new URL(url);
         const code = parsed.searchParams.get('code');
         if (code) {
-          oauthWin.close();
-          resolve(code);
+          event.preventDefault();
+          tryResolve(code);
         }
       }
     });
 
     oauthWin.on('closed', () => {
-      reject(new Error('OAuth window closed'));
+      tryReject(new Error('OAuth window closed'));
     });
   });
 }
@@ -277,6 +307,10 @@ function toggleChatWindow(): void {
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
       mainWindow.hide();
     }
+    // Reset chat state to clear stale screenshot/conversation (issues 3a, 3b)
+    try {
+      chatWindow!.webContents.send('chat:reset');
+    } catch { /* window not ready */ }
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
     const winWidth = 480;
@@ -313,6 +347,7 @@ function expandChatWindow(newHeight: number): void {
 async function onAuthSuccess(): Promise<void> {
   isAuthenticated = true;
   updateTrayMenu();
+  appLog('INFO', 'auth', 'Authentication successful');
 
   // Show mainWindow with splash
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -375,10 +410,11 @@ ipcMain.handle('auth:get-token', () => {
 ipcMain.handle('auth:login', async (_event, email: string, password: string) => {
   try {
     const result = await apiClient.login(email, password);
-    onAuthSuccess();
+    await onAuthSuccess(); // issue 2b: await to prevent race with UI
     return result;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Login failed';
+    appLog('ERROR', 'auth:login', msg);
     throw new Error(msg);
   }
 });
@@ -386,10 +422,11 @@ ipcMain.handle('auth:login', async (_event, email: string, password: string) => 
 ipcMain.handle('auth:register', async (_event, email: string, password: string, fullName: string) => {
   try {
     const result = await apiClient.register(email, password, fullName);
-    onAuthSuccess();
+    await onAuthSuccess(); // issue 2b: await to prevent race with UI
     return result;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Registration failed';
+    appLog('ERROR', 'auth:register', msg);
     throw new Error(msg);
   }
 });
@@ -405,10 +442,11 @@ ipcMain.handle('auth:google-oauth', async () => {
     );
 
     authStore.setTokens(data.access_token, data.refresh_token);
-    onAuthSuccess();
+    await onAuthSuccess(); // issue 2b: await to prevent race with UI
     return data;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Google OAuth failed';
+    appLog('ERROR', 'auth:google-oauth', msg);
     throw new Error(msg);
   }
 });
@@ -426,7 +464,15 @@ ipcMain.handle('auth:check', () => {
 // ─── Settings IPC Handlers ──────────────────────────────────
 
 ipcMain.handle('settings:delete-account', async () => {
-  await apiClient.deleteUser();
+  try {
+    await apiClient.deleteUser();
+  } catch (err: unknown) {
+    // Force local logout regardless of server outcome (issue 4c)
+    const msg = err instanceof Error ? err.message : 'Delete account failed';
+    appLog('ERROR', 'settings:delete-account', msg);
+    authStore.clear();
+  }
+
   isAuthenticated = false;
   updateTrayMenu();
 
@@ -464,6 +510,77 @@ ipcMain.on('settings:quit', () => {
   app.quit();
 });
 
+// ─── Agent IPC Handlers (issue 1b: route through ApiClient with auto-refresh) ──
+
+ipcMain.handle('agent:process', async (_event, params: {
+  conversation_id?: string;
+  user_prompt: string;
+  messages: { username: string; text: string; timestamp: string }[];
+  screenshot_metadata: { ocr_confidence: number; raw_text?: string };
+}) => {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  appLog('INFO', 'agent:process', `Sending request ${requestId}`, {
+    conversation_id: params.conversation_id,
+    prompt_length: params.user_prompt.length,
+    message_count: params.messages.length,
+  });
+
+  try {
+    const response = await apiClient.processConversation(params);
+    appLog('INFO', 'agent:process', `Response ${requestId}`, {
+      conversation_id: response.conversation_id,
+      block_count: response.blocks?.length ?? 0,
+    });
+    return response;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Agent process failed';
+    appLog('ERROR', 'agent:process', `Failed ${requestId}: ${msg}`);
+    throw new Error(msg);
+  }
+});
+
+ipcMain.handle('agent:confirm', async (_event, conversationId: string, actionIds: string[]) => {
+  const requestId = `confirm_${Date.now()}`;
+  appLog('INFO', 'agent:confirm', `Confirming ${requestId}`, { conversationId, actionIds });
+
+  try {
+    const response = await apiClient.confirmActions(conversationId, actionIds);
+    appLog('INFO', 'agent:confirm', `Response ${requestId}`, {
+      result_count: response.results?.length ?? 0,
+    });
+    return response;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Confirm actions failed';
+    appLog('ERROR', 'agent:confirm', `Failed ${requestId}: ${msg}`);
+    throw new Error(msg);
+  }
+});
+
+// ─── OCR IPC Handler (issue 6a: run in main process, off the renderer thread) ──
+
+ipcMain.handle('ocr:run', async (_event, imageBase64: string) => {
+  appLog('INFO', 'ocr', `Starting OCR, image size: ${Math.round(imageBase64.length / 1024)}KB`);
+  try {
+    const result = await extractFromImage(imageBase64);
+    appLog('INFO', 'ocr', `OCR complete`, {
+      confidence: result.confidence,
+      message_count: result.messages.length,
+      text_length: result.rawText.length,
+    });
+    return result;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'OCR failed';
+    appLog('ERROR', 'ocr', msg);
+    throw new Error(msg);
+  }
+});
+
+// ─── Renderer Error Forwarding (issue 5a) ───────────────────
+
+ipcMain.on('renderer:error', (_event, context: string, error: string) => {
+  appLog('ERROR', `renderer:${context}`, error);
+});
+
 // ─── App Lifecycle ──────────────────────────────────────────
 
 app.whenReady().then(() => {
@@ -491,17 +608,15 @@ async function startup(): Promise<void> {
     }
   };
 
-  // Step 1: Health check
+  // Step 1: Health check (async — no longer blocks main thread, issue 4a)
   sendSplashStatus('Connecting...');
   let healthy = false;
   try {
-    const { execSync } = require('child_process');
-    const stdout = execSync(`curl -s --connect-timeout 5 ${config.API_BASE_URL}/health`, { encoding: 'utf-8', timeout: 8000 });
-    const data = JSON.parse(stdout);
-    healthy = data.status === 'ok';
+    healthy = await apiClient.healthCheck();
   } catch {
     // Health check failed
   }
+  appLog('INFO', 'startup', `Health check result: ${healthy}`);
 
   if (!healthy) {
     sendSplashStatus('Service unavailable');
