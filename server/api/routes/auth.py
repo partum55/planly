@@ -171,7 +171,7 @@ async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
         user_repo = UserRepository(supabase)
         auth_service = AuthService(user_repo)
 
-        user = await user_repo.get_user_by_email(user_info['email'])
+        user = await user_repo.get_by_email(user_info['email'])
 
         if not user:
             # Create new user (no password for OAuth users)
@@ -228,7 +228,7 @@ async def link_telegram(request: LinkTelegramRequest):
         user_repo = UserRepository(supabase)
 
         # Find user by email
-        user = await user_repo.get_user_by_email(request.email)
+        user = await user_repo.get_by_email(request.email)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account found with that email")
 
