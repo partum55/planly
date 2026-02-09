@@ -41,19 +41,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: desktop-app/package-lock.json
 
-      - name: Cache electron-builder
+      - name: Cache npm & electron-builder
         uses: actions/cache@v4
         with:
           path: |
+            ~/.npm
+            ~/AppData/Local/npm-cache
             ~/AppData/Local/electron-builder/Cache
             ~/Library/Caches/electron-builder
             ~/.cache/electron-builder
             ~/.cache/electron
-          key: eb-${{ matrix.os }}-${{ hashFiles('desktop-app/package-lock.json') }}
-          restore-keys: eb-${{ matrix.os }}-
+          key: ${{ matrix.os }}-node-${{ hashFiles('desktop-app/package-lock.json') }}
+          restore-keys: ${{ matrix.os }}-node-
 
       - name: Install dependencies
         run: npm ci
