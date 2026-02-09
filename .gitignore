@@ -214,4 +214,9 @@ desktop-app/src/ui/vendor/
 *.AppImage
 *.dmg
 *.exe
+*.nsis
 package-lock.json
+
+# Ensure all __pycache__ and .venv are ignored (any depth)
+**/__pycache__/
+**/.venv/
