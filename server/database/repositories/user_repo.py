@@ -173,3 +173,66 @@ class UserRepository:
             )
         except Exception as e:
             logger.error(f"Error deleting session: {e}")
+
+    # ------------------------------------------------------------------
+    # Telegram link codes
+    # ------------------------------------------------------------------
+
+    async def create_link_code(
+        self,
+        user_id: UUID,
+        code: str,
+        expires_minutes: int = 10,
+    ) -> Optional[dict]:
+        """Store a new Telegram link code for the given user.
+
+        Any existing unconsumed codes for this user are invalidated first
+        so that only one active code exists at a time.
+        """
+        try:
+            # Invalidate previous codes for this user
+            await to_thread(
+                lambda: self.supabase.table("telegram_link_codes")
+                .update({"consumed": True})
+                .eq("user_id", str(user_id))
+                .eq("consumed", False)
+                .execute()
+            )
+
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+            response = await to_thread(
+                lambda: self.supabase.table("telegram_link_codes")
+                .insert({
+                    "user_id": str(user_id),
+                    "code": code,
+                    "expires_at": expires_at.isoformat(),
+                })
+                .execute()
+            )
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.error(f"Error creating link code: {e}")
+            raise
+
+    async def consume_link_code(self, code: str) -> Optional[dict]:
+        """Atomically consume a link code and return the associated user_id.
+
+        Uses UPDATE ... WHERE consumed=FALSE which serializes via row-level
+        locking — only the first caller gets the row back.
+        Returns None if the code is missing, expired, or already consumed.
+        """
+        try:
+            resp = await to_thread(
+                lambda: self.supabase.table("telegram_link_codes")
+                .update({"consumed": True})
+                .eq("code", code)
+                .eq("consumed", False)
+                .gte("expires_at", datetime.now(timezone.utc).isoformat())
+                .execute()
+            )
+            if not resp.data:
+                return None
+            return resp.data[0]
+        except Exception as e:
+            logger.error(f"Error consuming link code: {e}")
+            return None

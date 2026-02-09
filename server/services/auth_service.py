@@ -1,5 +1,7 @@
 """Authentication service."""
 import bcrypt
+import secrets
+import string
 from datetime import datetime, timezone
 from uuid import UUID
 from typing import Optional, Tuple
@@ -9,6 +11,11 @@ from config.settings import settings
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Link codes are 6 uppercase alphanumeric characters (no ambiguous chars)
+_LINK_CODE_ALPHABET = string.ascii_uppercase + string.digits
+_LINK_CODE_LENGTH = 6
+_LINK_CODE_EXPIRE_MINUTES = 10
 
 
 class AuthService:
@@ -135,3 +142,59 @@ class AuthService:
             telegram_id=telegram_id,
             telegram_username=telegram_username,
         )
+
+    # ------------------------------------------------------------------
+    # Telegram link-code flow
+    # ------------------------------------------------------------------
+
+    async def generate_telegram_link_code(self, user_id: UUID) -> str:
+        """Generate a short-lived code that proves account ownership.
+
+        The user requests this from an authenticated context (desktop app /
+        web) and then types ``/link <code>`` in Telegram to complete the
+        binding.
+        """
+        code = "".join(
+            secrets.choice(_LINK_CODE_ALPHABET)
+            for _ in range(_LINK_CODE_LENGTH)
+        )
+        await self.user_repo.create_link_code(
+            user_id=user_id,
+            code=code,
+            expires_minutes=_LINK_CODE_EXPIRE_MINUTES,
+        )
+        logger.info(f"Generated Telegram link code for user {user_id}")
+        return code
+
+    async def redeem_telegram_link_code(
+        self,
+        code: str,
+        telegram_id: int,
+        telegram_username: Optional[str] = None,
+    ) -> dict:
+        """Redeem a link code to bind a Telegram identity to the account.
+
+        Returns the linked user dict.
+        Raises ValueError if the code is invalid, expired, or already used.
+        """
+        row = await self.user_repo.consume_link_code(code.upper().strip())
+        if not row:
+            raise ValueError(
+                "Invalid or expired link code. "
+                "Please generate a new code from the Planly app."
+            )
+
+        user_id = UUID(row["user_id"])
+        success = await self.user_repo.link_telegram(
+            user_id=user_id,
+            telegram_id=telegram_id,
+            telegram_username=telegram_username,
+        )
+        if not success:
+            raise ValueError("Failed to link Telegram account. Please try again.")
+
+        user = await self.user_repo.get_by_id(user_id)
+        logger.info(
+            f"Telegram {telegram_id} linked to user {user_id} via code redemption"
+        )
+        return user
