@@ -226,7 +226,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
             data = response.json()
         except httpx.RequestError as e:
-            await message.reply_text("Could not reach the Planly server. Try again later.")
+            await message.reply_text(
+                f"Could not reach the Planly server.\n"
+                f"URL: {WEBSERVER_URL}/agent/process\n"
+                f"Error: {type(e).__name__}: {e}"
+            )
             print(f"Agent process error: {e}")
             return
 
