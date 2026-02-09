@@ -6,14 +6,22 @@
     "name": "Planly Team",
     "email": "planly@proton.me"
   },
+  "license": "MIT",
   "repository": "github:partum55/planly",
+  "homepage": "https://github.com/partum55/planly",
   "main": "dist/main.js",
   "scripts": {
     "build:ts": "tsc",
     "build:vendor": "node -e \"const fs=require('fs'),p=require('path');const d=p.join('src','ui','vendor');fs.mkdirSync(d,{recursive:true});for(const f of['tesseract.min.js','worker.min.js']){fs.copyFileSync(p.join('node_modules','tesseract.js','dist',f),p.join(d,f))}\"",
+    "lint": "tsc --noEmit",
     "start": "npm run build:vendor && npm run build:ts && electron .",
     "dev": "npm run build:vendor && tsc && electron .",
-    "build": "npm run build:vendor && npm run build:ts && electron-builder"
+    "compile": "npm run build:vendor && npm run build:ts",
+    "pack": "npm run compile && electron-builder --dir",
+    "dist": "npm run compile && electron-builder",
+    "dist:linux": "npm run compile && electron-builder --linux",
+    "dist:win": "npm run compile && electron-builder --win",
+    "dist:mac": "npm run compile && electron-builder --mac"
   },
   "dependencies": {
     "axios": "^1.7.0",
@@ -29,34 +37,52 @@
   "build": {
     "appId": "com.planly.desktop",
     "productName": "Planly",
+    "copyright": "Copyright © 2025 Planly Team",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "src/ui/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "eng.traineddata",
+        "to": "eng.traineddata"
+      }
+    ],
     "linux": {
-      "target": ["deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Utility",
       "icon": "build/icon.png",
-      "artifactName": "Planly-${version}-linux.${ext}"
+      "artifactName": "Planly-${version}-linux-${arch}.${ext}"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.png",
-      "artifactName": "Planly-${version}-win.${ext}"
+      "artifactName": "Planly-${version}-win-${arch}.${ext}"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "build/icon.png",
       "category": "public.app-category.productivity",
-      "artifactName": "Planly-${version}-mac.${ext}"
+      "artifactName": "Planly-${version}-mac-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "nsis": {
       "oneClick": true,
       "allowToChangeInstallationDirectory": false
-    }
+    },
+    "publish": null
   }
 }

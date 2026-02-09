@@ -1,0 +1,11 @@
+# Compiled output
+dist/
+
+# Build output / installers
+release/
+
+# Dependencies
+node_modules/
+
+# Vendor (built from node_modules at build time)
+src/ui/vendor/
