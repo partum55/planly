@@ -18,6 +18,36 @@ import { AuthStore } from './services/auth';
 import { ApiClient } from './services/api-client';
 import { config } from './config';
 import ElectronStore from 'electron-store';
+import { execSync, spawn } from 'child_process';
+
+// ─── Open URL in System Browser ─────────────────────────────
+function openInSystemBrowser(url: string): void {
+  if (process.platform !== 'linux') {
+    shell.openExternal(url);
+    return;
+  }
+
+  // Try multiple methods — gio is most reliable on GNOME/Wayland
+  const methods = [
+    { cmd: 'gio', args: ['open', url] },
+    { cmd: 'firefox', args: [url] },
+    { cmd: 'xdg-open', args: [url] },
+  ];
+
+  for (const method of methods) {
+    try {
+      const child = spawn(method.cmd, method.args, {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env },
+      });
+      child.unref();
+      return;
+    } catch {
+      // Try next method
+    }
+  }
+}
 
 // ─── Window Geometry Persistence ────────────────────────────
 interface WindowBounds {
@@ -196,6 +226,20 @@ function createMainWindow(): void {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'src', 'ui', 'app.html'));
 
+  // Prevent the main window from navigating to external URLs —
+  // forces OAuth to go through the system browser
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('file://')) {
+      event.preventDefault();
+      openInSystemBrowser(url);
+    }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openInSystemBrowser(url);
+    return { action: 'deny' };
+  });
+
   mainWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.key === 'Escape' && input.type === 'keyDown') {
       mainWindow?.hide();
@@ -258,88 +302,98 @@ function createChatWindow(): void {
   });
 }
 
-function startBrowserOAuth(): Promise<{ access_token: string; refresh_token: string }> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let server: http.Server | null = null;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
+// Persistent reference so the callback server + timeout stay alive across the async gap
+let oauthServer: http.Server | null = null;
+let oauthTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    function cleanup(): void {
-      if (timeout) { clearTimeout(timeout); timeout = null; }
-      if (server) { try { server.close(); } catch { /* ignore */ } server = null; }
+function cleanupOAuth(): void {
+  if (oauthTimeout) { clearTimeout(oauthTimeout); oauthTimeout = null; }
+  if (oauthServer) { try { oauthServer.close(); } catch { /* ignore */ } oauthServer = null; }
+}
+
+function startBrowserOAuth(): void {
+  // Clean up any previous OAuth attempt
+  cleanupOAuth();
+
+  const { exec } = require('child_process');
+
+  oauthServer = http.createServer(async (req, res) => {
+    const url = new URL(req.url || '/', `http://127.0.0.1`);
+
+    if (url.pathname !== '/callback') {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+      return;
     }
 
-    function settle(result: { access_token: string; refresh_token: string } | null, error?: Error): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (error) reject(error);
-      else resolve(result!);
-    }
-
-    server = http.createServer((req, res) => {
-      const url = new URL(req.url || '/', `http://127.0.0.1`);
-
-      if (url.pathname !== '/callback') {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not found');
-        return;
-      }
-
-      const error = url.searchParams.get('error');
-      if (error) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
-          <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
-          .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
-          h1{color:#e94560;margin-bottom:0.5rem;}p{color:#a0a0b0;}</style></head>
-          <body><div class="card"><h1>Authentication Failed</h1><p>${error}</p><p>You can close this tab.</p></div></body></html>`);
-        settle(null, new Error(error));
-        return;
-      }
-
-      const accessToken = url.searchParams.get('access_token');
-      const refreshToken = url.searchParams.get('refresh_token');
-
-      if (!accessToken || !refreshToken) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
-          <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
-          .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
-          h1{color:#e94560;margin-bottom:0.5rem;}p{color:#a0a0b0;}</style></head>
-          <body><div class="card"><h1>Authentication Failed</h1><p>Missing tokens in response.</p><p>You can close this tab.</p></div></body></html>`);
-        settle(null, new Error('Missing tokens in OAuth callback'));
-        return;
-      }
-
+    const error = url.searchParams.get('error');
+    if (error) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
         <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
         .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
-        h1{color:#0f3460;margin-bottom:0.5rem;}p{color:#a0a0b0;}.check{font-size:3rem;margin-bottom:1rem;}</style></head>
-        <body><div class="card"><div class="check">&#10003;</div><h1>Authentication Successful!</h1><p>You can close this tab and return to Planly.</p></div></body></html>`);
-      settle({ access_token: accessToken, refresh_token: refreshToken });
-    });
+        h1{color:#e94560;margin-bottom:0.5rem;}p{color:#a0a0b0;}</style></head>
+        <body><div class="card"><h1>Authentication Failed</h1><p>${error}</p><p>You can close this tab.</p></div></body></html>`);
+      cleanupOAuth();
+      try { mainWindow?.webContents.send('oauth:error', error); } catch { /* */ }
+      return;
+    }
 
-    server.on('error', (err) => {
-      settle(null, new Error(`OAuth callback server error: ${err.message}`));
-    });
+    const accessToken = url.searchParams.get('access_token');
+    const refreshToken = url.searchParams.get('refresh_token');
 
-    server.listen(0, '127.0.0.1', () => {
-      const addr = server!.address() as { port: number };
-      const callbackUrl = `http://127.0.0.1:${addr.port}/callback`;
-      const loginUrl = `${config.API_BASE_URL}/auth/google/login?redirect=${encodeURIComponent(callbackUrl)}`;
+    if (!accessToken || !refreshToken) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
+        <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
+        .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
+        h1{color:#e94560;margin-bottom:0.5rem;}p{color:#a0a0b0;}</style></head>
+        <body><div class="card"><h1>Authentication Failed</h1><p>Missing tokens in response.</p><p>You can close this tab.</p></div></body></html>`);
+      cleanupOAuth();
+      try { mainWindow?.webContents.send('oauth:error', 'Missing tokens in OAuth callback'); } catch { /* */ }
+      return;
+    }
 
-      appLog('INFO', 'oauth', `Opening system browser for OAuth`, { port: addr.port });
-      shell.openExternal(loginUrl).catch((err) => {
-        settle(null, new Error(`Failed to open browser: ${err.message}`));
-      });
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Planly</title>
+      <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a2e;color:#fff;}
+      .card{text-align:center;padding:2rem;border-radius:12px;background:#16213e;max-width:400px;}
+      h1{color:#0f3460;margin-bottom:0.5rem;}p{color:#a0a0b0;}.check{font-size:3rem;margin-bottom:1rem;}</style></head>
+      <body><div class="card"><div class="check">&#10003;</div><h1>Authentication Successful!</h1><p>You can close this tab and return to Planly.</p></div></body></html>`);
 
-      // 90-second timeout
-      timeout = setTimeout(() => {
-        settle(null, new Error('OAuth timed out — no response within 90 seconds'));
-      }, 90_000);
-    });
+    cleanupOAuth();
+
+    // Complete auth in the app
+    try {
+      authStore.setTokens(accessToken, refreshToken);
+      await onAuthSuccess();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Auth finalization failed';
+      appLog('ERROR', 'oauth', msg);
+      try { mainWindow?.webContents.send('oauth:error', msg); } catch { /* */ }
+    }
+  });
+
+  oauthServer.on('error', (err) => {
+    appLog('ERROR', 'oauth', `Callback server error: ${err.message}`);
+    cleanupOAuth();
+    try { mainWindow?.webContents.send('oauth:error', `Server error: ${err.message}`); } catch { /* */ }
+  });
+
+  oauthServer.listen(0, '127.0.0.1', () => {
+    const addr = oauthServer!.address() as { port: number };
+    const callbackUrl = `http://127.0.0.1:${addr.port}/callback`;
+    const loginUrl = `${config.API_BASE_URL}/auth/google/login?redirect=${encodeURIComponent(callbackUrl)}`;
+
+    appLog('INFO', 'oauth', `Opening system browser for OAuth`, { port: addr.port, loginUrl });
+    openInSystemBrowser(loginUrl);
+
+    // 90-second timeout
+    oauthTimeout = setTimeout(() => {
+      appLog('WARN', 'oauth', 'OAuth timed out after 90 seconds');
+      cleanupOAuth();
+      try { mainWindow?.webContents.send('oauth:error', 'OAuth timed out — no response within 90 seconds'); } catch { /* */ }
+    }, 90_000);
   });
 }
 
@@ -594,20 +648,10 @@ ipcMain.handle('auth:register', async (_event, email: string, password: string, 
 });
 
 ipcMain.handle('auth:google-oauth', () => {
-  // Return immediately so the renderer button doesn't block.
-  // Auth completion/failure is sent via 'oauth:result' event.
-  startBrowserOAuth()
-    .then(async (tokens) => {
-      authStore.setTokens(tokens.access_token, tokens.refresh_token);
-      await onAuthSuccess();
-    })
-    .catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Google OAuth failed';
-      appLog('ERROR', 'auth:google-oauth', msg);
-      try {
-        mainWindow?.webContents.send('oauth:error', msg);
-      } catch { /* window destroyed */ }
-    });
+  // Returns immediately. Opens system browser for OAuth.
+  // Auth success triggers onAuthSuccess() → navigation.
+  // Auth failure sends 'oauth:error' event to renderer.
+  startBrowserOAuth();
 });
 
 ipcMain.handle('auth:logout', () => {
