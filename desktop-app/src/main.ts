@@ -15,6 +15,73 @@ import { extractFromImage } from './services/ocr';
 import { AuthStore } from './services/auth';
 import { ApiClient } from './services/api-client';
 import { config } from './config';
+import ElectronStore from 'electron-store';
+
+// ─── Window Geometry Persistence ────────────────────────────
+interface WindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const CHAT_MIN_WIDTH = 360;
+const CHAT_MAX_WIDTH = 960;
+const CHAT_MIN_HEIGHT = 72;
+const CHAT_MAX_HEIGHT = 1200;
+const CHAT_DEFAULT_WIDTH = 480;
+const CHAT_DEFAULT_HEIGHT = 72;
+const CHAT_SCREEN_MARGIN = 32;
+
+const boundsStore = new ElectronStore<{ chatBounds?: WindowBounds }>({
+  name: 'window-bounds',
+  defaults: {},
+});
+
+function getValidatedChatBounds(): WindowBounds {
+  const saved = boundsStore.get('chatBounds');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay.workAreaSize;
+  const workAreaPos = primaryDisplay.workArea;
+
+  if (
+    saved &&
+    typeof saved.x === 'number' &&
+    typeof saved.y === 'number' &&
+    typeof saved.width === 'number' &&
+    typeof saved.height === 'number'
+  ) {
+    // Clamp dimensions to valid range
+    const w = Math.max(CHAT_MIN_WIDTH, Math.min(saved.width, CHAT_MAX_WIDTH, workArea.width));
+    const h = Math.max(CHAT_MIN_HEIGHT, Math.min(saved.height, CHAT_MAX_HEIGHT, workArea.height));
+
+    // Ensure the window is at least partially visible on screen
+    let x = saved.x;
+    let y = saved.y;
+    const minVisible = 100;
+
+    if (x + w < workAreaPos.x + minVisible) x = workAreaPos.x;
+    if (x > workAreaPos.x + workArea.width - minVisible) x = workAreaPos.x + workArea.width - w;
+    if (y < workAreaPos.y) y = workAreaPos.y;
+    if (y > workAreaPos.y + workArea.height - minVisible) y = workAreaPos.y + workArea.height - h;
+
+    return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) };
+  }
+
+  // Default: centered horizontally, anchored near bottom
+  return {
+    x: Math.round((workArea.width - CHAT_DEFAULT_WIDTH) / 2) + workAreaPos.x,
+    y: workAreaPos.y + workArea.height - CHAT_DEFAULT_HEIGHT - CHAT_SCREEN_MARGIN,
+    width: CHAT_DEFAULT_WIDTH,
+    height: CHAT_DEFAULT_HEIGHT,
+  };
+}
+
+function saveChatBounds(): void {
+  if (!chatWindow || chatWindow.isDestroyed()) return;
+  const bounds = chatWindow.getBounds();
+  boundsStore.set('chatBounds', bounds);
+}
 
 // When launched from desktop (no terminal), stdout/stderr are broken pipes.
 // Silence EPIPE to prevent crash on any console.log/console.error call.
@@ -124,21 +191,20 @@ function createMainWindow(): void {
 }
 
 function createChatWindow(): void {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-
-  const winWidth = 480;
-  const winHeight = 72;
+  const bounds = getValidatedChatBounds();
 
   chatWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    x: Math.round((screenWidth - winWidth) / 2),
-    y: screenHeight - winHeight - 32,
+    ...bounds,
     show: false,
     frame: false,
     alwaysOnTop: true,
-    resizable: false,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    minWidth: CHAT_MIN_WIDTH,
+    minHeight: CHAT_MIN_HEIGHT,
+    maxWidth: CHAT_MAX_WIDTH,
+    maxHeight: CHAT_MAX_HEIGHT,
     skipTaskbar: true,
     backgroundColor: '#1a1a2e',
     webPreferences: {
@@ -147,6 +213,10 @@ function createChatWindow(): void {
       nodeIntegration: false,
     },
   });
+
+  // Persist bounds on move/resize end
+  chatWindow.on('moved', () => saveChatBounds());
+  chatWindow.on('resized', () => saveChatBounds());
 
   chatWindow.loadFile(path.join(__dirname, '..', 'src', 'ui', 'chat.html'));
 
@@ -311,16 +381,9 @@ function toggleChatWindow(): void {
     try {
       chatWindow!.webContents.send('chat:reset');
     } catch { /* window not ready */ }
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-    const winWidth = 480;
-    const winHeight = 72;
-    chatWindow!.setBounds({
-      x: Math.round((screenWidth - winWidth) / 2),
-      y: screenHeight - winHeight - 32,
-      width: winWidth,
-      height: winHeight,
-    });
+    // Restore last persisted bounds (validated against current screen)
+    const restoredBounds = getValidatedChatBounds();
+    chatWindow!.setBounds(restoredBounds);
     chatWindow!.show();
     chatWindow!.focus();
   }
@@ -330,16 +393,28 @@ function expandChatWindow(newHeight: number): void {
   if (!chatWindow || chatWindow.isDestroyed()) return;
 
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  const winWidth = 480;
-  const clampedHeight = Math.min(newHeight, screenHeight - 64);
+  const workArea = primaryDisplay.workArea;
+  const currentBounds = chatWindow.getBounds();
+
+  const clampedHeight = Math.max(
+    CHAT_MIN_HEIGHT,
+    Math.min(newHeight, CHAT_MAX_HEIGHT, workArea.height)
+  );
+
+  // Grow upward: keep bottom edge fixed
+  const bottomY = currentBounds.y + currentBounds.height;
+  let newY = bottomY - clampedHeight;
+
+  // Don't go above the work area
+  if (newY < workArea.y) newY = workArea.y;
 
   chatWindow.setBounds({
-    x: Math.round((screenWidth - winWidth) / 2),
-    y: screenHeight - clampedHeight - 32,
-    width: winWidth,
-    height: clampedHeight,
+    x: currentBounds.x,
+    y: Math.round(newY),
+    width: currentBounds.width,
+    height: Math.round(clampedHeight),
   });
+  saveChatBounds();
 }
 
 // ─── Auth transition helper ─────────────────────────────────
@@ -374,6 +449,59 @@ ipcMain.on('chat:close', () => {
 ipcMain.on('chat:resize', (_event, height: number) => {
   expandChatWindow(height);
 });
+
+ipcMain.on('chat:move-window', (_event, deltaX: number, deltaY: number) => {
+  if (!chatWindow || chatWindow.isDestroyed()) return;
+  const bounds = chatWindow.getBounds();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay.workArea;
+
+  let newX = bounds.x + deltaX;
+  let newY = bounds.y + deltaY;
+
+  // Clamp to screen bounds
+  newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - bounds.width));
+  newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - bounds.height));
+
+  chatWindow.setPosition(Math.round(newX), Math.round(newY));
+});
+
+ipcMain.on('chat:set-bounds', (_event, bounds: { x: number; y: number; width: number; height: number }) => {
+  if (!chatWindow || chatWindow.isDestroyed()) return;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay.workArea;
+
+  const w = Math.max(CHAT_MIN_WIDTH, Math.min(bounds.width, CHAT_MAX_WIDTH, workArea.width));
+  const h = Math.max(CHAT_MIN_HEIGHT, Math.min(bounds.height, CHAT_MAX_HEIGHT, workArea.height));
+  let x = Math.max(workArea.x, Math.min(bounds.x, workArea.x + workArea.width - w));
+  let y = Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - h));
+
+  chatWindow.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
+});
+
+ipcMain.on('chat:save-bounds', () => {
+  saveChatBounds();
+});
+
+ipcMain.handle('chat:get-bounds', () => {
+  if (!chatWindow || chatWindow.isDestroyed()) return null;
+  return chatWindow.getBounds();
+});
+
+ipcMain.handle('chat:get-screen-info', () => {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  return {
+    workArea: primaryDisplay.workArea,
+    scaleFactor: primaryDisplay.scaleFactor,
+  };
+});
+
+ipcMain.handle('chat:get-constraints', () => ({
+  minWidth: CHAT_MIN_WIDTH,
+  maxWidth: CHAT_MAX_WIDTH,
+  minHeight: CHAT_MIN_HEIGHT,
+  maxHeight: CHAT_MAX_HEIGHT,
+}));
 
 ipcMain.handle('config:get', () => ({
   apiBaseUrl: config.API_BASE_URL,

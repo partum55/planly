@@ -25,6 +25,7 @@
     }
 
     .chat-box {
+      position: relative;
       background: #1a1a2e;
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 16px;
@@ -354,12 +355,73 @@
       color: #444;
       padding: 0 0 6px;
     }
+
+    /* ─── Drag Handle (title bar) ──────────────────────── */
+    .drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 0 2px;
+      cursor: grab;
+      user-select: none;
+      -webkit-app-region: no-drag; /* we handle dragging ourselves */
+      flex-shrink: 0;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .drag-handle .grip {
+      width: 36px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      transition: background 0.15s;
+    }
+
+    .drag-handle:hover .grip {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* ─── Resize Handles ───────────────────────────────── */
+    .resize-handle {
+      position: absolute;
+      z-index: 100;
+    }
+
+    /* Edges */
+    .resize-handle.rh-top    { top: -3px; left: 8px; right: 8px; height: 6px; cursor: n-resize; }
+    .resize-handle.rh-bottom { bottom: -3px; left: 8px; right: 8px; height: 6px; cursor: s-resize; }
+    .resize-handle.rh-left   { top: 8px; bottom: 8px; left: -3px; width: 6px; cursor: w-resize; }
+    .resize-handle.rh-right  { top: 8px; bottom: 8px; right: -3px; width: 6px; cursor: e-resize; }
+
+    /* Corners */
+    .resize-handle.rh-top-left     { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nw-resize; }
+    .resize-handle.rh-top-right    { top: -3px; right: -3px; width: 12px; height: 12px; cursor: ne-resize; }
+    .resize-handle.rh-bottom-left  { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: sw-resize; }
+    .resize-handle.rh-bottom-right { bottom: -3px; right: -3px; width: 12px; height: 12px; cursor: se-resize; }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <div class="chat-box">
+  <div class="chat-box" id="chatBox">
+    <!-- Resize handles (edges + corners) -->
+    <div class="resize-handle rh-top" data-direction="n"></div>
+    <div class="resize-handle rh-bottom" data-direction="s"></div>
+    <div class="resize-handle rh-left" data-direction="w"></div>
+    <div class="resize-handle rh-right" data-direction="e"></div>
+    <div class="resize-handle rh-top-left" data-direction="nw"></div>
+    <div class="resize-handle rh-top-right" data-direction="ne"></div>
+    <div class="resize-handle rh-bottom-left" data-direction="sw"></div>
+    <div class="resize-handle rh-bottom-right" data-direction="se"></div>
+
+    <!-- Drag handle (title bar) -->
+    <div class="drag-handle" id="dragHandle" title="Drag to move window" tabindex="0" role="slider" aria-label="Drag to move window">
+      <div class="grip"></div>
+    </div>
+
     <div class="messages" id="messages"></div>
     <div class="confirm-bar" id="confirmBar">
       <button class="btn-cancel" id="btnCancelActions">Cancel</button>
@@ -789,7 +851,213 @@
   // ─── Initial focus ──────────────────────────────────────
   inputField.focus();
   requestResize();
-</script>
+  // ═══════════════════════════════════════════════════════
+  // WindowManager — handles drag & resize event flows
+  // ═══════════════════════════════════════════════════════
+  //
+  // Event flow — Drag:
+  //   pointerdown on .drag-handle
+  //   → capture pointer, record start screen coords
+  //   → pointermove: compute delta, call planly.moveWindow(dx, dy)
+  //   → pointerup/pointercancel: release capture, persist bounds
+  //
+  // Event flow — Resize:
+  //   pointerdown on .resize-handle[data-direction]
+  //   → capture pointer, record start coords + start bounds
+  //   → pointermove: compute delta per direction axes,
+  //     send new bounds via planly.setWindowBounds(...)
+  //   → pointerup/pointercancel: release, persist bounds
+  //
+  // Edge cases handled:
+  //   • Pointer capture prevents events leaking to iframes / external windows
+  //   • Bounds clamped to screen work area (server-side in main.ts)
+  //   • Min/max constraints enforced both client-side and Electron-side
+  //   • Keyboard arrow keys move the window when drag handle is focused
+  //   • High-DPI: all coordinates are in logical (CSS) pixels — Electron
+  //     handles DPR mapping internally via screen.getPrimaryDisplay()
+  //   • Stale/offscreen persisted values are corrected on restore
+  //
+
+  const WindowManager = (() => {
+    const KEYBOARD_MOVE_STEP = 20; // px per arrow key press
+
+    // ─── Drag state ──────────────────────────
+    let isDragging = false;
+    let dragStartScreenX = 0;
+    let dragStartScreenY = 0;
+
+    // ─── Resize state ────────────────────────
+    let isResizing = false;
+    let resizeDir = '';
+    let resizeStartScreenX = 0;
+    let resizeStartScreenY = 0;
+    let resizeStartBounds = { x: 0, y: 0, width: 0, height: 0 };
+    let constraints = { minWidth: 360, maxWidth: 960, minHeight: 72, maxHeight: 1200 };
+
+    // Load constraints from main process
+    async function loadConstraints() {
+      try {
+        constraints = await planlyApi.getWindowConstraints();
+      } catch (_) {}
+    }
+    loadConstraints();
+
+    // ─── Drag logic ──────────────────────────
+
+    const dragHandle = document.getElementById('dragHandle');
+
+    function onDragStart(e) {
+      // Only primary button
+      if (e.button !== 0) return;
+      // Don't start drag from interactive children (there shouldn't be any, but safety)
+      if (e.target !== dragHandle && !dragHandle.contains(e.target)) return;
+
+      isDragging = true;
+      dragStartScreenX = e.screenX;
+      dragStartScreenY = e.screenY;
+
+      dragHandle.setPointerCapture(e.pointerId);
+      dragHandle.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+
+      e.preventDefault();
+    }
+
+    function onDragMove(e) {
+      if (!isDragging) return;
+
+      const dx = e.screenX - dragStartScreenX;
+      const dy = e.screenY - dragStartScreenY;
+
+      if (dx !== 0 || dy !== 0) {
+        planlyApi.moveWindow(dx, dy);
+        dragStartScreenX = e.screenX;
+        dragStartScreenY = e.screenY;
+      }
+    }
+
+    function onDragEnd(e) {
+      if (!isDragging) return;
+      isDragging = false;
+
+      try { dragHandle.releasePointerCapture(e.pointerId); } catch (_) {}
+      dragHandle.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      planlyApi.saveWindowBounds();
+    }
+
+    dragHandle.addEventListener('pointerdown', onDragStart);
+    dragHandle.addEventListener('pointermove', onDragMove);
+    dragHandle.addEventListener('pointerup', onDragEnd);
+    dragHandle.addEventListener('pointercancel', onDragEnd);
+
+    // ─── Keyboard accessibility for drag handle ──
+
+    dragHandle.addEventListener('keydown', (e) => {
+      let dx = 0, dy = 0;
+      switch (e.key) {
+        case 'ArrowLeft':  dx = -KEYBOARD_MOVE_STEP; break;
+        case 'ArrowRight': dx = KEYBOARD_MOVE_STEP; break;
+        case 'ArrowUp':    dy = -KEYBOARD_MOVE_STEP; break;
+        case 'ArrowDown':  dy = KEYBOARD_MOVE_STEP; break;
+        default: return;
+      }
+      e.preventDefault();
+      planlyApi.moveWindow(dx, dy);
+      planlyApi.saveWindowBounds();
+    });
+
+    // ─── Resize logic ────────────────────────
+
+    const resizeHandles = document.querySelectorAll('.resize-handle');
+
+    async function onResizeStart(e) {
+      if (e.button !== 0) return;
+
+      const dir = e.currentTarget.dataset.direction;
+      if (!dir) return;
+
+      isResizing = true;
+      resizeDir = dir;
+      resizeStartScreenX = e.screenX;
+      resizeStartScreenY = e.screenY;
+
+      try {
+        const bounds = await planlyApi.getWindowBounds();
+        if (bounds) resizeStartBounds = { ...bounds };
+      } catch (_) {}
+
+      e.currentTarget.setPointerCapture(e.pointerId);
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    }
+
+    function onResizeMove(e) {
+      if (!isResizing) return;
+
+      const dx = e.screenX - resizeStartScreenX;
+      const dy = e.screenY - resizeStartScreenY;
+
+      let { x, y, width, height } = resizeStartBounds;
+
+      // Compute new bounds based on resize direction
+      if (resizeDir.includes('e')) {
+        width = resizeStartBounds.width + dx;
+      }
+      if (resizeDir.includes('w')) {
+        width = resizeStartBounds.width - dx;
+        x = resizeStartBounds.x + dx;
+      }
+      if (resizeDir.includes('s')) {
+        height = resizeStartBounds.height + dy;
+      }
+      if (resizeDir.includes('n')) {
+        height = resizeStartBounds.height - dy;
+        y = resizeStartBounds.y + dy;
+      }
+
+      // Client-side clamp (main process also clamps)
+      width = Math.max(constraints.minWidth, Math.min(width, constraints.maxWidth));
+      height = Math.max(constraints.minHeight, Math.min(height, constraints.maxHeight));
+
+      // If width was clamped on the west side, fix x
+      if (resizeDir.includes('w')) {
+        x = resizeStartBounds.x + resizeStartBounds.width - width;
+      }
+      // If height was clamped on the north side, fix y
+      if (resizeDir.includes('n')) {
+        y = resizeStartBounds.y + resizeStartBounds.height - height;
+      }
+
+      planlyApi.setWindowBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) });
+    }
+
+    function onResizeEnd(e) {
+      if (!isResizing) return;
+      isResizing = false;
+      resizeDir = '';
+
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (_) {}
+      document.body.style.userSelect = '';
+
+      planlyApi.saveWindowBounds();
+    }
+
+    resizeHandles.forEach((handle) => {
+      handle.addEventListener('pointerdown', onResizeStart);
+      handle.addEventListener('pointermove', onResizeMove);
+      handle.addEventListener('pointerup', onResizeEnd);
+      handle.addEventListener('pointercancel', onResizeEnd);
+    });
+
+    // ─── Prevent drag/resize from inner controls ──
+    // The pointer capture approach already prevents this:
+    // pointerdown only fires on .drag-handle / .resize-handle elements,
+    // so clicks on inputs, buttons, messages etc. behave normally.
+
+    return { loadConstraints };
+  })();</script>
 
 </body>
 </html>

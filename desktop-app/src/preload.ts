@@ -2,15 +2,15 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // ─── Listener cleanup registry ──────────────────────────────
 // Prevents listener leaks on page reload (issue 7c).
-const registeredListeners: Array<{ channel: string; handler: (...args: unknown[]) => void }> = [];
+const registeredListeners: Array<{ channel: string; handler: (...args: any[]) => void }> = [];
 
-function safeOn(channel: string, handler: (...args: unknown[]) => void) {
+function safeOn(channel: string, handler: (...args: any[]) => void) {
   ipcRenderer.on(channel, handler);
   registeredListeners.push({ channel, handler });
 }
 
 // Clean up all listeners when the page unloads (dev-tools reload, navigation)
-window.addEventListener('beforeunload', () => {
+(globalThis as any).addEventListener?.('beforeunload', () => {
   for (const { channel, handler } of registeredListeners) {
     ipcRenderer.removeListener(channel, handler);
   }
@@ -28,6 +28,15 @@ contextBridge.exposeInMainWorld('planly', {
     const handler = () => callback();
     safeOn('chat:reset', handler);
   },
+
+  // Window geometry (drag & resize support)
+  moveWindow: (deltaX: number, deltaY: number) => ipcRenderer.send('chat:move-window', deltaX, deltaY),
+  setWindowBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.send('chat:set-bounds', bounds),
+  saveWindowBounds: () => ipcRenderer.send('chat:save-bounds'),
+  getWindowBounds: () => ipcRenderer.invoke('chat:get-bounds') as Promise<{ x: number; y: number; width: number; height: number } | null>,
+  getScreenInfo: () => ipcRenderer.invoke('chat:get-screen-info') as Promise<{ workArea: { x: number; y: number; width: number; height: number }; scaleFactor: number }>,
+  getWindowConstraints: () => ipcRenderer.invoke('chat:get-constraints') as Promise<{ minWidth: number; maxWidth: number; minHeight: number; maxHeight: number }>,
 
   // Screenshot
   takeScreenshot: () => ipcRenderer.invoke('chat:screenshot'),
