@@ -136,6 +136,10 @@ function createChatWindow(): void {
 
   chatWindow.loadFile(path.join(__dirname, '..', 'src', 'ui', 'chat.html'));
 
+  chatWindow.webContents.on('console-message', (_e, _level, msg) => {
+    console.log('[chat]', msg);
+  });
+
   chatWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.key === 'Escape' && input.type === 'keyDown') {
       chatWindow?.hide();
@@ -341,6 +345,7 @@ ipcMain.handle('config:get', () => ({
 }));
 
 ipcMain.handle('chat:screenshot', async () => {
+  console.log('chat:screenshot called');
   const wasVisible = chatWindow?.isVisible() ?? false;
   if (wasVisible) chatWindow!.hide();
 
@@ -348,7 +353,11 @@ ipcMain.handle('chat:screenshot', async () => {
 
   try {
     const result = await captureScreenshot();
+    console.log('screenshot OK, base64 length:', result.imageBase64.length);
     return result;
+  } catch (err) {
+    console.error('screenshot FAILED:', err);
+    throw err;
   } finally {
     if (wasVisible) {
       chatWindow!.show();

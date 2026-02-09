@@ -408,7 +408,7 @@
   const btnCancelActions = document.getElementById('btnCancelActions');
 
   // ─── Planly bridge (from preload) ──────────────────────
-  const planly = window.planly;
+  const planlyApi = window.planly;
 
   // ─── Input handling ────────────────────────────────────
   inputField.addEventListener('input', () => {
@@ -438,7 +438,7 @@
   btnScreenshot.addEventListener('click', async () => {
     btnScreenshot.style.color = '#6c5ce7';
     try {
-      lastScreenshot = await planly.takeScreenshot();
+      lastScreenshot = await planlyApi.takeScreenshot();
       btnScreenshot.style.color = '#00d26a';
       setTimeout(() => { btnScreenshot.style.color = ''; }, 1500);
     } catch (err) {
@@ -456,7 +456,7 @@
   });
 
   // ─── Reset on toggle ───────────────────────────────────
-  planly.resetChat(() => {
+  planlyApi.resetChat(() => {
     conversationId = null;
     selectedActionIds.clear();
     currentActions = [];
@@ -485,7 +485,7 @@
     if (!lastScreenshot) {
       addTypingIndicator();
       try {
-        lastScreenshot = await planly.takeScreenshot();
+        lastScreenshot = await planlyApi.takeScreenshot();
       } catch (err) {
         removeTypingIndicator();
         addMessage('agent', 'Failed to capture screenshot. Please try the camera button manually.');
@@ -611,7 +611,7 @@
 
   // ─── API calls ──────────────────────────────────────────
   async function callAgentProcess(params) {
-    const token = await planly.getToken();
+    const token = await planlyApi.getToken();
     const res = await fetch(WEBSERVER_URL + '/agent/process', {
       method: 'POST',
       headers: {
@@ -634,7 +634,7 @@
   }
 
   async function callConfirmActions(convId, actionIds) {
-    const token = await planly.getToken();
+    const token = await planlyApi.getToken();
     const res = await fetch(WEBSERVER_URL + '/agent/confirm-actions', {
       method: 'POST',
       headers: {
@@ -825,7 +825,7 @@
       const contentHeight = chatBox.scrollHeight + 16; // 8px padding top+bottom
       const minHeight = 72;
       const needed = Math.max(minHeight, contentHeight);
-      planly.resizeChat(needed);
+      planlyApi.resizeChat(needed);
     });
   }
 
