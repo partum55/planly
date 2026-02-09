@@ -2,7 +2,10 @@
   "name": "planly-desktop",
   "version": "1.0.0",
   "description": "Planly Desktop - AI agent for planning activities from chat conversations",
-  "author": "Planly Team",
+  "author": {
+    "name": "Planly Team",
+    "email": "planly@proton.me"
+  },
   "repository": "github:partum55/planly",
   "main": "dist/main.js",
   "scripts": {
