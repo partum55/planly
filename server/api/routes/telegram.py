@@ -20,14 +20,17 @@ def _validate_telegram_secret(secret: Optional[str]) -> None:
     Validate the X-Telegram-Bot-Api-Secret-Token header.
 
     Telegram sends this header on every webhook request if a secret_token
-    was provided when calling setWebhook.  Validation is mandatory to prevent
-    prompt injection via forged webhook payloads.
+    was provided when calling setWebhook.  When TELEGRAM_WEBHOOK_SECRET is
+    configured, validation is enforced to prevent prompt injection via
+    forged webhook payloads.  When not configured, the webhook endpoint
+    is disabled (the bot should use polling instead).
     """
     expected = settings.TELEGRAM_WEBHOOK_SECRET
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Webhook secret not configured on server",
+            detail="Webhook endpoint disabled — TELEGRAM_WEBHOOK_SECRET not configured. "
+                   "Use polling mode or set TELEGRAM_WEBHOOK_SECRET in .env.",
         )
     if secret != expected:
         raise HTTPException(

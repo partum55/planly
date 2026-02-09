@@ -40,60 +40,70 @@ async def _cache_action_plan(
     idempotency_key: Optional[str] = None,
 ) -> None:
     """Store action plan in the database so it survives multi-worker / restarts."""
-    supabase = get_supabase()
-    data = {
-        "conversation_id": conversation_id,
-        "intent_data": intent or {},
-        "tool_calls": tools,
-        "idempotency_key": idempotency_key,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
-    }
-    # Upsert — if the same conversation already has a cached plan, overwrite it
-    await to_thread(
-        lambda: supabase.table("action_plan_cache")
-        .upsert(data, on_conflict="conversation_id")
-        .execute()
-    )
+    try:
+        supabase = get_supabase()
+        data = {
+            "conversation_id": conversation_id,
+            "intent_data": intent or {},
+            "tool_calls": tools,
+            "idempotency_key": idempotency_key,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+        }
+        # Upsert — if the same conversation already has a cached plan, overwrite it
+        await to_thread(
+            lambda: supabase.table("action_plan_cache")
+            .upsert(data, on_conflict="conversation_id")
+            .execute()
+        )
+    except Exception as e:
+        logger.warning(f"Failed to cache action plan (table may not exist): {e}")
 
 
 async def _get_cached_plan(conversation_id: str) -> Optional[dict]:
     """Retrieve a cached action plan.  Returns None if missing, consumed, or expired."""
-    supabase = get_supabase()
-    resp = await to_thread(
-        lambda: supabase.table("action_plan_cache")
-        .select("*")
-        .eq("conversation_id", conversation_id)
-        .eq("status", "pending")
-        .execute()
-    )
-    if not resp.data:
+    try:
+        supabase = get_supabase()
+        resp = await to_thread(
+            lambda: supabase.table("action_plan_cache")
+            .select("*")
+            .eq("conversation_id", conversation_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        if not resp.data:
+            return None
+
+        row = resp.data[0]
+        # TTL check — 15 minutes
+        created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) - created > timedelta(minutes=15):
+            # Expired — clean up
+            await to_thread(
+                lambda: supabase.table("action_plan_cache")
+                .delete()
+                .eq("conversation_id", conversation_id)
+                .execute()
+            )
+            return None
+        return row
+    except Exception as e:
+        logger.warning(f"Failed to read cached plan (table may not exist): {e}")
         return None
 
-    row = resp.data[0]
-    # TTL check — 15 minutes
-    created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-    if datetime.now(timezone.utc) - created > timedelta(minutes=15):
-        # Expired — clean up
+
+async def _delete_cached_plan(conversation_id: str) -> None:
+    try:
+        supabase = get_supabase()
         await to_thread(
             lambda: supabase.table("action_plan_cache")
             .delete()
             .eq("conversation_id", conversation_id)
             .execute()
         )
-        return None
-    return row
-
-
-async def _delete_cached_plan(conversation_id: str) -> None:
-    supabase = get_supabase()
-    await to_thread(
-        lambda: supabase.table("action_plan_cache")
-        .delete()
-        .eq("conversation_id", conversation_id)
-        .execute()
-    )
+    except Exception as e:
+        logger.warning(f"Failed to delete cached plan: {e}")
 
 
 async def _consume_cached_plan(conversation_id: str) -> Optional[dict]:
@@ -104,23 +114,27 @@ async def _consume_cached_plan(conversation_id: str) -> Optional[dict]:
     via row-level locking, so only the first caller sees the row returned.
     Returns None if the plan is missing, expired, or already consumed.
     """
-    supabase = get_supabase()
-    resp = await to_thread(
-        lambda: supabase.table("action_plan_cache")
-        .update({"status": "consumed"})
-        .eq("conversation_id", conversation_id)
-        .eq("status", "pending")
-        .execute()
-    )
-    if not resp.data:
-        return None
+    try:
+        supabase = get_supabase()
+        resp = await to_thread(
+            lambda: supabase.table("action_plan_cache")
+            .update({"status": "consumed"})
+            .eq("conversation_id", conversation_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        if not resp.data:
+            return None
 
-    row = resp.data[0]
-    # TTL check — 15 minutes
-    created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-    if datetime.now(timezone.utc) - created > timedelta(minutes=15):
-        return None  # Expired
-    return row
+        row = resp.data[0]
+        # TTL check — 15 minutes
+        created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) - created > timedelta(minutes=15):
+            return None  # Expired
+        return row
+    except Exception as e:
+        logger.warning(f"Failed to consume cached plan: {e}")
+        return None
 
 
 def _compute_idempotency_key(request: AgentProcessRequest) -> str:
@@ -232,16 +246,25 @@ async def process_conversation(
             )
 
         # Store messages (batch insert — single DB round-trip)
-        message_rows = [
-            {
+        # The DB expects TIMESTAMPTZ but clients may send human-readable
+        # timestamps like "2:30 PM".  Normalise to ISO-8601 for Postgres.
+        now = datetime.now(timezone.utc)
+        message_rows = []
+        for msg in request.context.messages:
+            ts = msg.timestamp
+            try:
+                # Already ISO-8601 — validate it
+                datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                # Not ISO — use current UTC time as fallback
+                ts = now.isoformat()
+            message_rows.append({
                 "text": msg.text,
                 "username": msg.username,
-                "timestamp": msg.timestamp,
+                "timestamp": ts,
                 "source": request.source,
                 "is_bot_mention": False,
-            }
-            for msg in request.context.messages
-        ]
+            })
         await conversation_repo.insert_messages_batch(conversation_id, message_rows)
 
         # Process conversation (O→R→P)

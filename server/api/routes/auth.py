@@ -11,7 +11,6 @@ from api.schemas.request_schemas import (
     LinkTelegramRequest
 )
 from api.schemas.response_schemas import TokenResponse, UserResponse, UserProfileResponse
-import httpx
 from api.middleware.auth_middleware import get_current_user
 from database.client import get_supabase
 from database.repositories.user_repo import UserRepository
@@ -219,26 +218,31 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
 
 
 @router.post("/link-telegram")
-async def link_telegram(
-    request: LinkTelegramRequest,
-    current_user: dict = Depends(get_current_user),
-):
+async def link_telegram(request: LinkTelegramRequest):
     """
-    Link Telegram account to the authenticated user.
+    Link Telegram account to a Planly user by email.
 
-    Requires JWT authentication to prevent any unauthenticated caller
-    from linking arbitrary Telegram accounts to arbitrary emails.
+    No JWT required — called by the Telegram bot's /link command where
+    the user provides their email.  Looks up the user by email and links
+    the telegram_id to that account.
     """
     try:
         supabase = get_supabase()
         user_repo = UserRepository(supabase)
 
-        # Use the authenticated user's ID (ignore request.email for safety)
+        # Look up user by email (no auth required per AGENT_1_TASKS spec)
+        user = await user_repo.get_by_email(request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account found with that email",
+            )
+
         auth_service = AuthService(user_repo)
         success = await auth_service.link_telegram_account(
-            user_id=UUID(current_user['id']),
+            user_id=UUID(user['id']),
             telegram_id=request.telegram_id,
-            telegram_username=request.telegram_username
+            telegram_username=request.telegram_username,
         )
 
         if not success:
@@ -246,7 +250,7 @@ async def link_telegram(
 
         return {
             "success": True,
-            "user_id": str(current_user['id'])
+            "user_id": str(user['id']),
         }
 
     except HTTPException:
