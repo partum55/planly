@@ -22,12 +22,16 @@ contextBridge.exposeInMainWorld('planly', {
   logout: () => ipcRenderer.invoke('auth:logout'),
   checkAuth: () => ipcRenderer.invoke('auth:check'),
 
-  // Legacy (login window controls)
-  onLoginSuccess: (tokens: { access_token: string; refresh_token: string }) =>
-    ipcRenderer.send('login:success', tokens),
-  closeLogin: () => ipcRenderer.send('login:close'),
+  // Settings / app controls
+  logoutAndRestart: () => ipcRenderer.invoke('settings:logout'),
+  deleteAccount: () => ipcRenderer.invoke('settings:delete-account'),
+  quitApp: () => ipcRenderer.send('settings:quit'),
 
-  // Start window
-  onStartStatus: (callback: (status: string) => void) =>
-    ipcRenderer.on('start:status', (_e: unknown, status: string) => callback(status)),
+  // Navigation (mainWindow view switching)
+  onNavigate: (callback: (view: string) => void) =>
+    ipcRenderer.on('navigate', (_e: unknown, view: string) => callback(view)),
+  onSplashStatus: (callback: (status: string) => void) =>
+    ipcRenderer.on('splash:status', (_e: unknown, status: string) => callback(status)),
+  onUserInfo: (callback: (info: { name: string }) => void) =>
+    ipcRenderer.on('user:info', (_e: unknown, info: { name: string }) => callback(info)),
 });

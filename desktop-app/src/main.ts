@@ -14,17 +14,18 @@ import { AuthStore } from './services/auth';
 import { ApiClient } from './services/api-client';
 import { config } from './config';
 
-// Disable sandbox for Linux (SUID sandbox not available in AppImage)
-if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('no-sandbox');
-}
+// When launched from desktop (no terminal), stdout/stderr are broken pipes.
+// Silence EPIPE to prevent crash on any console.log/console.error call.
+process.stdout?.on?.('error', () => {});
+process.stderr?.on?.('error', () => {});
+
+// no-sandbox is passed via CLI or .desktop launcher — no appendSwitch needed
 
 const authStore = new AuthStore();
 const apiClient = new ApiClient(config.API_BASE_URL, authStore);
 
+let mainWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
-let loginWindow: BrowserWindow | null = null;
-let startWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isAuthenticated = false;
 let isQuitting = false;
@@ -36,16 +37,51 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    toggleChatWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
+}
+
+// ─── Navigation Helpers ─────────────────────────────────────
+
+function navigateTo(view: string): void {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('navigate', view);
+    }
+  } catch {
+    // Window or webContents destroyed — ignore
+  }
+}
+
+function sendSplashStatus(status: string): void {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('splash:status', status);
+    }
+  } catch {
+    // Window or webContents destroyed — ignore
+  }
+}
+
+function sendUserInfo(info: { name: string }): void {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('user:info', info);
+    }
+  } catch {
+    // Window or webContents destroyed — ignore
+  }
 }
 
 // ─── Window Factories ───────────────────────────────────────
 
-function createStartWindow(): void {
-  startWindow = new BrowserWindow({
-    width: 360,
-    height: 400,
+function createMainWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 400,
+    height: 580,
     frame: false,
     resizable: false,
     backgroundColor: '#1a1a2e',
@@ -57,17 +93,20 @@ function createStartWindow(): void {
     },
   });
 
-  startWindow.loadFile(path.join(__dirname, '..', 'src', 'ui', 'start.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', 'src', 'ui', 'app.html'));
 
-  startWindow.on('closed', () => {
-    startWindow = null;
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'Escape' && input.type === 'keyDown') {
+      mainWindow?.hide();
+    }
   });
-}
 
-function sendStartStatus(status: string): void {
-  if (startWindow && !startWindow.isDestroyed()) {
-    startWindow.webContents.send('start:status', status);
-  }
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 }
 
 function createChatWindow(): void {
@@ -111,34 +150,6 @@ function createChatWindow(): void {
   });
 }
 
-function createLoginWindow(): void {
-  loginWindow = new BrowserWindow({
-    width: 400,
-    height: 580,
-    frame: false,
-    resizable: false,
-    backgroundColor: '#1a1a2e',
-    center: true,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  loginWindow.loadFile(path.join(__dirname, '..', 'src', 'ui', 'login.html'));
-
-  loginWindow.webContents.on('before-input-event', (_event, input) => {
-    if (input.key === 'Escape' && input.type === 'keyDown') {
-      loginWindow?.close();
-    }
-  });
-
-  loginWindow.on('closed', () => {
-    loginWindow = null;
-  });
-}
-
 function createOAuthWindow(): Promise<string> {
   return new Promise((resolve, reject) => {
     const redirectUri = `${config.API_BASE_URL}/auth/google/callback`;
@@ -163,7 +174,6 @@ function createOAuthWindow(): Promise<string> {
 
     oauthWin.loadURL(authUrl);
 
-    // Intercept the redirect to capture the authorization code
     oauthWin.webContents.on('will-redirect', (_event, url) => {
       const parsed = new URL(url);
       const code = parsed.searchParams.get('code');
@@ -178,7 +188,6 @@ function createOAuthWindow(): Promise<string> {
       }
     });
 
-    // Also check navigation (some flows use navigation instead of redirect)
     oauthWin.webContents.on('will-navigate', (_event, url) => {
       if (url.startsWith(redirectUri)) {
         const parsed = new URL(url);
@@ -209,15 +218,23 @@ function updateTrayMenu(): void {
       label: isAuthenticated ? 'Logout' : 'Login',
       click: () => {
         if (isAuthenticated) {
-          authStore.clear();
+          apiClient.logout();
           isAuthenticated = false;
           updateTrayMenu();
-        } else {
-          if (!loginWindow || loginWindow.isDestroyed()) {
-            createLoginWindow();
+          if (chatWindow && !chatWindow.isDestroyed()) {
+            chatWindow.hide();
           }
-          loginWindow?.show();
-          loginWindow?.focus();
+          navigateTo('login');
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        } else {
+          navigateTo('login');
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
         }
       },
     },
@@ -245,12 +262,16 @@ function toggleChatWindow(): void {
     chatWindow!.hide();
   } else {
     if (!isAuthenticated) {
-      if (!loginWindow || loginWindow.isDestroyed()) {
-        createLoginWindow();
+      navigateTo('login');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
       }
-      loginWindow?.show();
-      loginWindow?.focus();
       return;
+    }
+    // Hide main window when showing chat
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.hide();
     }
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
@@ -285,24 +306,24 @@ function expandChatWindow(newHeight: number): void {
 
 // ─── Auth transition helper ─────────────────────────────────
 
-function onAuthSuccess(): void {
+async function onAuthSuccess(): Promise<void> {
   isAuthenticated = true;
   updateTrayMenu();
 
-  // Close start window if open
-  if (startWindow && !startWindow.isDestroyed()) {
-    startWindow.close();
-    startWindow = null;
+  // Show mainWindow with splash
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
   }
+  navigateTo('splash');
 
-  // Close login window if open
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.close();
-    loginWindow = null;
-  }
+  const me = await apiClient.getMe();
+  const name = me?.full_name || me?.email || '';
+  sendSplashStatus(name ? `Welcome, ${name}!` : 'Welcome!');
 
-  // Show chat
-  toggleChatWindow();
+  await new Promise((r) => setTimeout(r, 1500));
+
+  sendUserInfo({ name: name || 'User' });
+  navigateTo('home');
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────
@@ -368,7 +389,6 @@ ipcMain.handle('auth:google-oauth', async () => {
   try {
     const code = await createOAuthWindow();
 
-    // Send code to backend to exchange for tokens
     const { default: axios } = await import('axios');
     const { data } = await axios.post<{ access_token: string; refresh_token: string; user_id: string }>(
       `${config.API_BASE_URL}/auth/google/callback`,
@@ -394,68 +414,124 @@ ipcMain.handle('auth:check', () => {
   return authStore.isAuthenticated();
 });
 
-// ─── Legacy IPC (kept for compatibility) ────────────────────
+// ─── Settings IPC Handlers ──────────────────────────────────
 
-ipcMain.on('login:success', (_event, tokens: { access_token: string; refresh_token: string }) => {
-  authStore.setTokens(tokens.access_token, tokens.refresh_token);
-  onAuthSuccess();
+ipcMain.handle('settings:delete-account', async () => {
+  await apiClient.deleteUser();
+  isAuthenticated = false;
+  updateTrayMenu();
+
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.hide();
+  }
+
+  navigateTo('login');
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
 });
 
-ipcMain.on('login:close', () => {
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.close();
-    loginWindow = null;
+ipcMain.handle('settings:logout', async () => {
+  await apiClient.logout();
+  isAuthenticated = false;
+  updateTrayMenu();
+
+  // Hide chat window
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.hide();
   }
+
+  // Navigate to login in same mainWindow
+  navigateTo('login');
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
+ipcMain.on('settings:quit', () => {
+  isQuitting = true;
+  app.quit();
 });
 
 // ─── App Lifecycle ──────────────────────────────────────────
 
-app.whenReady().then(async () => {
-  // Always show start window first
-  createStartWindow();
+app.whenReady().then(() => {
+  startup().catch(() => {});
+});
+
+async function startup(): Promise<void> {
+  createMainWindow();
+
+  const MIN_SPLASH_MS = 1500;
+  const splashShownAt = Date.now();
 
   try {
     createTray();
-  } catch (err) {
-    console.error('Tray not available');
+  } catch {
+    // Tray may fail on some environments — non-fatal
   }
 
   registerShortcut();
 
-  // Check for saved tokens
+  const waitSplash = async () => {
+    const elapsed = Date.now() - splashShownAt;
+    if (elapsed < MIN_SPLASH_MS) {
+      await new Promise((r) => setTimeout(r, MIN_SPLASH_MS - elapsed));
+    }
+  };
+
+  // Step 1: Health check
+  sendSplashStatus('Connecting...');
+  let healthy = false;
+  try {
+    const { execSync } = require('child_process');
+    const stdout = execSync(`curl -s --connect-timeout 5 ${config.API_BASE_URL}/health`, { encoding: 'utf-8', timeout: 8000 });
+    const data = JSON.parse(stdout);
+    healthy = data.status === 'ok';
+  } catch {
+    // Health check failed
+  }
+
+  if (!healthy) {
+    sendSplashStatus('Service unavailable');
+    await waitSplash();
+    await new Promise((r) => setTimeout(r, 2000));
+    isQuitting = true;
+    app.quit();
+    return;
+  }
+
+  // Step 2: Check auth
   if (authStore.isAuthenticated()) {
-    sendStartStatus('Connecting...');
-
+    sendSplashStatus('Signing in...');
     const refreshed = await apiClient.refreshToken();
+
     if (refreshed) {
-      sendStartStatus('Connected!');
+      isAuthenticated = true;
+      updateTrayMenu();
 
-      // Brief pause so user sees "Connected!"
-      await new Promise((r) => setTimeout(r, 600));
-      onAuthSuccess();
+      const me = await apiClient.getMe();
+      const name = me?.full_name || me?.email || '';
+      sendSplashStatus(name ? `Welcome, ${name}!` : 'Welcome!');
+
+      await waitSplash();
+      await new Promise((r) => setTimeout(r, 1200));
+
+      sendUserInfo({ name: name || 'User' });
+      navigateTo('home');
     } else {
-      sendStartStatus('Session expired');
+      sendSplashStatus('Session expired');
+      await waitSplash();
       await new Promise((r) => setTimeout(r, 800));
-
-      if (startWindow && !startWindow.isDestroyed()) {
-        startWindow.close();
-        startWindow = null;
-      }
-      createLoginWindow();
+      navigateTo('login');
     }
   } else {
-    sendStartStatus('Welcome!');
-
-    // Brief splash then login
-    await new Promise((r) => setTimeout(r, 1200));
-
-    if (startWindow && !startWindow.isDestroyed()) {
-      startWindow.close();
-      startWindow = null;
-    }
-    createLoginWindow();
+    await waitSplash();
+    navigateTo('login');
   }
-});
+}
 
 app.on('before-quit', () => {
   isQuitting = true;

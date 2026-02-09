@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { execFile } from 'child_process';
 import { AuthStore } from './auth';
 
 // ─── Widget Protocol (Agent 2 defines, Agent 1 implements) ──
@@ -49,9 +50,11 @@ export interface RegisterResponse {
 export class ApiClient {
   private client: AxiosInstance;
   private authStore: AuthStore;
+  private baseURL: string;
 
   constructor(baseURL: string, authStore: AuthStore) {
     this.authStore = authStore;
+    this.baseURL = baseURL;
 
     this.client = axios.create({
       baseURL,
@@ -85,6 +88,23 @@ export class ApiClient {
     );
   }
 
+  // ─── Health ────────────────────────────────────────────
+
+  async healthCheck(): Promise<boolean> {
+    const url = `${this.baseURL}/health`;
+    return new Promise((resolve) => {
+      execFile('curl', ['-s', '--connect-timeout', '5', url], (err, stdout) => {
+        if (err) { resolve(false); return; }
+        try {
+          const data = JSON.parse(stdout);
+          resolve(data.status === 'ok');
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+  }
+
   // ─── Auth ───────────────────────────────────────────────
 
   async login(email: string, password: string): Promise<LoginResponse> {
@@ -107,6 +127,15 @@ export class ApiClient {
     );
     this.authStore.setTokens(data.access_token, data.refresh_token);
     return data;
+  }
+
+  async getMe(): Promise<{ full_name?: string; email?: string } | null> {
+    try {
+      const { data } = await this.client.get<{ full_name?: string; email?: string }>('/auth/me');
+      return data;
+    } catch {
+      return null;
+    }
   }
 
   async refreshToken(): Promise<boolean> {
@@ -151,6 +180,20 @@ export class ApiClient {
       }
     );
     return data;
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.client.post('/auth/logout');
+    } catch {
+      // Best-effort — clear local tokens regardless
+    }
+    this.authStore.clear();
+  }
+
+  async deleteUser(): Promise<void> {
+    await this.client.delete('/auth/me');
+    this.authStore.clear();
   }
 
   async confirmActions(
