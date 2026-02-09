@@ -370,42 +370,71 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
     )
 
 
-@router.post("/link-telegram")
-async def link_telegram(request: LinkTelegramRequest):
+@router.post("/link-telegram/code")
+async def generate_link_code(current_user: dict = Depends(get_current_user)):
     """
-    Link Telegram account to a Planly user by email.
+    Generate a short-lived 6-character code for Telegram account linking.
 
-    No JWT required — called by the Telegram bot's /link command where
-    the user provides their email.  Looks up the user by email and links
-    the telegram_id to that account.
+    Requires a valid JWT (desktop app / web session).  The user then
+    types ``/link <CODE>`` in Telegram to complete the binding.
+    The code expires after 10 minutes and can only be used once.
     """
     try:
         supabase = get_supabase()
         user_repo = UserRepository(supabase)
-
-        # Look up user by email (no auth required per AGENT_1_TASKS spec)
-        user = await user_repo.get_by_email(request.email)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No account found with that email",
-            )
-
         auth_service = AuthService(user_repo)
-        success = await auth_service.link_telegram_account(
-            user_id=UUID(user['id']),
+
+        code = await auth_service.generate_telegram_link_code(
+            user_id=UUID(current_user["id"]),
+        )
+
+        return {
+            "code": code,
+            "expires_in_seconds": 600,
+            "instruction": (
+                f"Send this command in any Telegram chat with the Planly bot:\n"
+                f"/link {code}"
+            ),
+        }
+
+    except Exception as e:
+        logger.error(f"Generate link code error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate link code",
+        )
+
+
+@router.post("/link-telegram")
+async def link_telegram(request: LinkTelegramRequest):
+    """
+    Redeem a link code to bind a Telegram identity to a Planly account.
+
+    No JWT required — called by the Telegram bot.  Security is enforced
+    by the short-lived, single-use code that was generated from an
+    authenticated session.
+    """
+    try:
+        supabase = get_supabase()
+        user_repo = UserRepository(supabase)
+        auth_service = AuthService(user_repo)
+
+        user = await auth_service.redeem_telegram_link_code(
+            code=request.code,
             telegram_id=request.telegram_id,
             telegram_username=request.telegram_username,
         )
 
-        if not success:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to link Telegram account")
-
         return {
             "success": True,
-            "user_id": str(user['id']),
+            "user_id": str(user["id"]),
         }
 
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:

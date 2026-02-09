@@ -179,3 +179,30 @@ BEGIN
        OR status = 'consumed';
 END;
 $$ LANGUAGE plpgsql;
+
+-- Telegram link codes — short-lived codes that prove account ownership
+-- Flow: authenticated user generates a code, then redeems it from Telegram.
+CREATE TABLE IF NOT EXISTS telegram_link_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '10 minutes',
+    consumed BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE UNIQUE INDEX idx_telegram_link_codes_code ON telegram_link_codes(code)
+    WHERE consumed = FALSE;
+CREATE INDEX idx_telegram_link_codes_user ON telegram_link_codes(user_id);
+CREATE INDEX idx_telegram_link_codes_expires ON telegram_link_codes(expires_at);
+
+-- Auto-cleanup expired or consumed link codes
+CREATE OR REPLACE FUNCTION cleanup_expired_link_codes()
+RETURNS void AS $$
+BEGIN
+    DELETE FROM telegram_link_codes
+    WHERE expires_at < NOW() OR consumed = TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON TABLE telegram_link_codes IS 'Short-lived codes for secure Telegram account linking';

@@ -39,7 +39,13 @@ class GoogleOAuthCallbackRequest(BaseModel):
 
 
 class LinkTelegramRequest(BaseModel):
-    email: EmailStr  # Added per AGENT_1_TASKS spec
+    """Redeem a link code to bind Telegram to a Planly account.
+
+    The user generates a code from an authenticated context (desktop app
+    or web), then types /link <code> in Telegram.  The bot posts this
+    request to complete the binding.
+    """
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^[A-Z0-9]{6}$")
     telegram_id: int
     telegram_username: Optional[str] = None
 

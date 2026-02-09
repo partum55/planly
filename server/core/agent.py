@@ -432,3 +432,7 @@ def _classify_error(exc: Exception) -> str:
         return "llm_parse_error"
     return "internal_error"
 
+
+# Backward-compatible alias
+TelegramAgent = PlanlyAgent
+

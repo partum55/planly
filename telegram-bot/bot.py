@@ -90,7 +90,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "I'll read recent messages, understand the context, and propose actions.\n\n"
         "Commands:\n"
         "/help  \u2014 How to use Planly\n"
-        "/link <email>  \u2014 Link Telegram to your Planly account\n"
+        "/link <CODE>  \u2014 Link Telegram to your Planly account\n"
         "/reset  \u2014 Clear conversation state"
     )
 
@@ -104,7 +104,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         '   @planly_bot organize dinner\n'
         "4. I'll propose actions \u2014 tap to select, then Confirm\n\n"
         "I can create calendar events, search restaurants, find showtimes, and more.\n\n"
-        "/link <email> \u2014 Connect Telegram to your Planly account\n"
+        "/link <CODE> \u2014 Connect Telegram to your Planly account\n"
+        "  (get a code from the Planly desktop app or web settings)\n"
         "/reset \u2014 Clear conversation state for this group"
     )
 
@@ -112,12 +113,16 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Usage: /link your@email.com\n"
-            "This connects your Telegram to your Planly account."
+            "Usage: /link <CODE>\n\n"
+            "To get a code:\n"
+            "1. Log in to the Planly desktop app or web\n"
+            "2. Go to Settings \u2192 Link Telegram\n"
+            "3. Copy the 6-character code\n"
+            "4. Come back here and type /link YOUR_CODE"
         )
         return
 
-    email = context.args[0]
+    code = context.args[0].upper().strip()
     user_id = update.effective_user.id
     username = update.effective_user.username or ""
 
@@ -127,14 +132,14 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"{WEBSERVER_URL}/auth/link-telegram",
                 headers=_headers(),
                 json={
-                    "email": email,
+                    "code": code,
                     "telegram_id": user_id,
                     "telegram_username": username,
                 },
             )
             if response.status_code == 200:
                 await update.message.reply_text(
-                    f"Linked! Your Telegram is now connected to {email}."
+                    "\u2705 Linked! Your Telegram is now connected to your Planly account."
                 )
             else:
                 data = response.json()

@@ -1,7 +1,7 @@
 """Tests for AuthService — register, login, OAuth, and token refresh."""
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from uuid import uuid4
+from uuid import uuid4, UUID
 from datetime import datetime, timezone, timedelta
 
 from services.auth_service import AuthService
@@ -21,6 +21,9 @@ def user_repo():
     repo.update_last_login = AsyncMock()
     repo.get_session_by_token = AsyncMock()
     repo.link_telegram = AsyncMock(return_value=True)
+    repo.create_link_code = AsyncMock(return_value={"id": str(uuid4()), "code": "ABC123"})
+    repo.consume_link_code = AsyncMock(return_value=None)
+    repo.get_by_id = AsyncMock(return_value=None)
     return repo
 
 
@@ -163,3 +166,80 @@ class TestLinkTelegram:
             telegram_id=12345,
             telegram_username="johndoe",
         )
+
+
+# ---------------------------------------------------------------------------
+# Telegram Link Code Flow
+# ---------------------------------------------------------------------------
+
+class TestGenerateTelegramLinkCode:
+    @pytest.mark.asyncio
+    async def test_generates_6_char_alphanumeric_code(self, auth_service, user_repo):
+        uid = uuid4()
+        code = await auth_service.generate_telegram_link_code(uid)
+        assert len(code) == 6
+        assert code.isalnum()
+        assert code == code.upper()  # all uppercase
+
+    @pytest.mark.asyncio
+    async def test_stores_code_in_repo(self, auth_service, user_repo):
+        uid = uuid4()
+        code = await auth_service.generate_telegram_link_code(uid)
+        user_repo.create_link_code.assert_awaited_once()
+        call_kwargs = user_repo.create_link_code.call_args.kwargs
+        assert call_kwargs["user_id"] == uid
+        assert call_kwargs["code"] == code
+        assert call_kwargs["expires_minutes"] == 10
+
+    @pytest.mark.asyncio
+    async def test_each_call_produces_different_code(self, auth_service, user_repo):
+        uid = uuid4()
+        codes = set()
+        for _ in range(20):
+            codes.add(await auth_service.generate_telegram_link_code(uid))
+        # With 36^6 = ~2 billion possibilities, 20 calls must all be unique
+        assert len(codes) == 20
+
+
+class TestRedeemTelegramLinkCode:
+    @pytest.mark.asyncio
+    async def test_invalid_code_raises(self, auth_service, user_repo):
+        """Unknown / expired / consumed code raises ValueError."""
+        user_repo.consume_link_code.return_value = None
+        with pytest.raises(ValueError, match="Invalid or expired"):
+            await auth_service.redeem_telegram_link_code("BADCOD", 99999)
+
+    @pytest.mark.asyncio
+    async def test_successful_redemption(self, auth_service, user_repo):
+        uid = str(uuid4())
+        user_repo.consume_link_code.return_value = {"user_id": uid, "code": "ABC123"}
+        user_repo.get_by_id.return_value = {"id": uid, "email": "a@b.com"}
+
+        user = await auth_service.redeem_telegram_link_code(
+            "ABC123", 99999, "tg_user"
+        )
+        assert user["id"] == uid
+        user_repo.link_telegram.assert_awaited_once_with(
+            user_id=UUID(uid),
+            telegram_id=99999,
+            telegram_username="tg_user",
+        )
+
+    @pytest.mark.asyncio
+    async def test_code_is_uppercased(self, auth_service, user_repo):
+        """Code should be normalised to uppercase before lookup."""
+        user_repo.consume_link_code.return_value = None
+        with pytest.raises(ValueError):
+            await auth_service.redeem_telegram_link_code("abc123", 99999)
+        # verify the code was uppercased before calling repo
+        user_repo.consume_link_code.assert_awaited_once_with("ABC123")
+
+    @pytest.mark.asyncio
+    async def test_link_failure_raises(self, auth_service, user_repo):
+        """If the DB update fails, a clear error is raised."""
+        uid = str(uuid4())
+        user_repo.consume_link_code.return_value = {"user_id": uid, "code": "ABC123"}
+        user_repo.link_telegram.return_value = False
+
+        with pytest.raises(ValueError, match="Failed to link"):
+            await auth_service.redeem_telegram_link_code("ABC123", 99999)
