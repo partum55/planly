@@ -35,7 +35,7 @@
       "package.json"
     ],
     "linux": {
-      "target": ["AppImage"],
+      "target": ["deb"],
       "category": "Utility",
       "icon": "build/icon.png",
       "artifactName": "Planly-${version}-linux.${ext}"
