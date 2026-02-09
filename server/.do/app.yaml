@@ -1,0 +1,53 @@
+name: planly-server
+region: ams
+services:
+  - name: planly-api
+    dockerfile_path: /server/Dockerfile
+    source_dir: /server
+    github:
+      repo: your-github-username/planly
+      branch: main
+      deploy_on_push: true
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    http_port: 8000
+    routes:
+      - path: /
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+    envs:
+      # Supabase
+      - key: SUPABASE_URL
+        value: "CHANGE_ME"
+      - key: SUPABASE_KEY
+        value: "CHANGE_ME"
+        type: SECRET
+      # LLM (cloud required — no local Ollama on App Platform)
+      - key: USE_CLOUD_LLM
+        value: "true"
+      - key: OLLAMA_ENDPOINT
+        value: "https://api.groq.com/openai"
+      - key: OLLAMA_MODEL
+        value: "llama-3.1-8b-instant"
+      - key: LLM_API_KEY
+        value: "CHANGE_ME"
+        type: SECRET
+      # Auth
+      - key: JWT_SECRET_KEY
+        value: "CHANGE_ME"
+        type: SECRET
+      - key: JWT_ALGORITHM
+        value: "HS256"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "525600"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "30"
+      # Server
+      - key: HOST
+        value: "0.0.0.0"
+      - key: PORT
+        value: "8000"
+      - key: LOG_LEVEL
+        value: "INFO"

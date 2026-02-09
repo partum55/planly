@@ -274,3 +274,214 @@ inline keyboards, no action card selection.
 | Action cards don't work | Backend returns empty blocks | Check LLM is running (Ollama or cloud) |
 | `This action card has expired` | Different message_id | Someone clicked old buttons — mention bot again |
 | Confirm shows error | Action plan cache cleared | Backend restarted — mention bot again to regenerate |
+
+---
+
+# Deploy to DigitalOcean App Platform
+
+The bot uses long-polling (`run_polling()`), not webhooks. On DigitalOcean App Platform
+this means it must run as a **Worker** (background process), not a Web Service.
+
+**Total time: ~15 minutes** (first deploy)
+
+---
+
+## Prerequisites (~2 min)
+
+| What | Status | Notes |
+|------|--------|-------|
+| DigitalOcean account | needed | [cloud.digitalocean.com](https://cloud.digitalocean.com) |
+| `doctl` CLI | optional | can use web dashboard instead |
+| GitHub repo with `telegram-bot/` pushed | needed | DO pulls from git |
+| Backend deployed & reachable | needed | bot needs `WEBSERVER_URL` that's not `localhost` |
+| `SERVICE_TOKEN` (valid JWT) | needed | see [Auth section](#auth-how-the-bot-authenticates-with-the-backend) |
+
+**Important:** Your backend must be reachable from the internet. If the backend is also
+on DigitalOcean App Platform, use its public URL (e.g. `https://planly-api-xxxxx.ondigitalocean.app`).
+
+---
+
+## Option A: Deploy via Web Dashboard (~10 min)
+
+### A1. Push code to GitHub (~2 min)
+
+Make sure `telegram-bot/` is in your repo with these files:
+```
+telegram-bot/
+  bot.py
+  requirements.txt
+  Dockerfile
+```
+
+### A2. Create App (~3 min)
+
+1. Go to [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps)
+2. Click **Create App**
+3. Select **GitHub** as source
+4. Authorize DigitalOcean to access your repo
+5. Select your `planly` repository and branch (`main`)
+
+### A3. Configure as Worker (~2 min)
+
+On the Resources screen:
+
+1. DigitalOcean auto-detects components. **Delete any auto-detected web services.**
+2. Click **Add Resource** > **Detect from source code** (or **Create Resource from Dockerfile**)
+3. Set:
+   - **Name:** `telegram-bot`
+   - **Type:** **Worker** (not Web Service)
+   - **Source Directory:** `/telegram-bot`
+   - **Dockerfile Path:** `/telegram-bot/Dockerfile`
+4. **Plan:** Basic ($5/mo) is enough — the bot uses <50MB RAM
+
+### A4. Set Environment Variables (~2 min)
+
+In the app settings, add these env vars for the `telegram-bot` worker:
+
+| Variable | Value | Encrypt? |
+|----------|-------|----------|
+| `TELEGRAM_BOT_TOKEN` | `7123456789:AAH...` | Yes |
+| `WEBSERVER_URL` | `https://your-backend-url.ondigitalocean.app` | No |
+| `SERVICE_TOKEN` | `eyJ...valid-jwt` | Yes |
+
+**Do not set these in `.env` file** — App Platform injects them as real environment
+variables. The bot's `load_dotenv()` + `os.getenv()` picks them up automatically.
+
+### A5. Deploy (~2 min)
+
+Click **Create Resources**. DigitalOcean will:
+1. Pull your repo
+2. Build the Docker image
+3. Start the worker
+
+Check the **Runtime Logs** tab. You should see:
+```
+Planly Telegram bot started
+Backend: https://your-backend-url.ondigitalocean.app
+Auth: SERVICE_TOKEN set
+```
+
+---
+
+## Option B: Deploy via `doctl` CLI (~8 min)
+
+### B1. Install doctl (~2 min)
+
+```bash
+# Ubuntu/Debian
+sudo snap install doctl
+
+# macOS
+brew install doctl
+
+# Auth
+doctl auth init
+```
+
+### B2. Create App Spec (~1 min)
+
+Create `telegram-bot/.do/app.yaml`:
+
+```yaml
+name: planly-telegram-bot
+region: ams
+workers:
+  - name: telegram-bot
+    dockerfile_path: /telegram-bot/Dockerfile
+    source_dir: /telegram-bot
+    github:
+      repo: your-github-username/planly
+      branch: main
+      deploy_on_push: true
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      - key: TELEGRAM_BOT_TOKEN
+        value: "your-bot-token"
+        type: SECRET
+      - key: WEBSERVER_URL
+        value: "https://your-backend-url.ondigitalocean.app"
+      - key: SERVICE_TOKEN
+        value: "your-jwt-token"
+        type: SECRET
+```
+
+### B3. Deploy (~5 min)
+
+```bash
+doctl apps create --spec telegram-bot/.do/app.yaml
+```
+
+Check status:
+```bash
+doctl apps list
+doctl apps logs <app-id> --type run
+```
+
+---
+
+## Verifying the Deploy (~1 min)
+
+1. Open **Runtime Logs** in the DO dashboard (or `doctl apps logs`)
+2. Look for `Planly Telegram bot started`
+3. Go to your Telegram group
+4. Send a test message, then `@your_bot mention something`
+5. Bot should reply with typing indicator then agent response
+
+---
+
+## Updating After Code Changes (~2 min)
+
+If `deploy_on_push: true` is set, just push to `main`:
+```bash
+git add telegram-bot/bot.py
+git commit -m "Update bot logic"
+git push
+```
+
+DigitalOcean auto-redeploys. Takes ~1-2 minutes.
+
+For manual redeploy:
+```bash
+# Dashboard: Apps > your app > Actions > Force Rebuild
+# CLI:
+doctl apps create-deployment <app-id> --force-rebuild
+```
+
+---
+
+## Cost
+
+| Resource | Plan | Cost |
+|----------|------|------|
+| Worker (1 instance) | Basic | **$5/month** |
+| Bandwidth | 1TB included | $0 |
+
+The bot idles most of the time (long-polling waits for Telegram updates).
+Basic plan is more than enough.
+
+---
+
+## Common Deploy Issues
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Build fails | Wrong Dockerfile path | Set Source Directory to `/telegram-bot` |
+| Worker crashes immediately | Missing env vars | Check all 3 env vars are set in App Settings |
+| `Could not reach the Planly server` | Backend URL is `localhost` | Use the public URL of your deployed backend |
+| `Backend error: Invalid or expired token` | JWT expired | Generate a new one, update `SERVICE_TOKEN` env var |
+| Bot runs twice / duplicate replies | Multiple instances | Set `instance_count: 1` — polling bots must be single-instance |
+| Logs say nothing | Worker type wrong | Must be **Worker**, not Web Service (web expects an HTTP port) |
+
+---
+
+## Why Worker, Not Web Service?
+
+The bot uses `run_polling()` — it opens a persistent connection to Telegram's API
+and pulls updates in a loop. It never listens on an HTTP port.
+
+DigitalOcean Web Services expect your process to bind to `$PORT` and serve HTTP.
+If you deploy the bot as a Web Service, DO will think it crashed (no port open)
+and restart it in a loop.
+
+**Worker** = background process with no port requirement. Exactly what a polling bot needs.

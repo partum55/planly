@@ -390,3 +390,349 @@ open http://localhost:8000/docs
 ---
 
 Need help? Check the logs or open an issue!
+
+---
+
+# Deploy to DigitalOcean App Platform
+
+The server is a FastAPI web app — it runs as a **Web Service** on App Platform
+(binds to `$PORT`, serves HTTP).
+
+**Total time: ~15 minutes** (first deploy, assuming Supabase + LLM already configured)
+
+---
+
+## Prerequisites (~3 min)
+
+| What | Status | Notes |
+|------|--------|-------|
+| DigitalOcean account | needed | [cloud.digitalocean.com](https://cloud.digitalocean.com) |
+| `doctl` CLI | optional | can use web dashboard instead |
+| GitHub repo with `server/` pushed | needed | DO pulls from git |
+| Supabase project | needed | cloud DB, already set up from local dev |
+| Cloud LLM API key | needed | **can't run Ollama on App Platform** |
+| Google Calendar service account | optional | falls back to mock events without it |
+
+**Critical:** Local Ollama will NOT work on App Platform. You must use a cloud
+LLM provider (Groq, Together AI, OpenRouter). Set `USE_CLOUD_LLM=true`.
+
+---
+
+## Option A: Deploy via Web Dashboard (~10 min)
+
+### A1. Push code to GitHub (~2 min)
+
+Make sure `server/` is in your repo. Key files:
+```
+server/
+  Dockerfile
+  main.py
+  requirements.txt
+  api/
+  core/
+  config/
+  database/
+  integrations/
+  models/
+  services/
+  tools/
+  utils/
+```
+
+Ensure `.env` is in `.gitignore` — secrets go in DO env vars, not in git.
+
+### A2. Create App (~3 min)
+
+1. Go to [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps)
+2. Click **Create App**
+3. Select **GitHub** as source
+4. Authorize DigitalOcean to access your repo
+5. Select your `planly` repository and branch (`main`)
+
+### A3. Configure as Web Service (~2 min)
+
+On the Resources screen:
+
+1. DigitalOcean may auto-detect a component. Edit it or create new:
+   - **Name:** `planly-api`
+   - **Type:** **Web Service**
+   - **Source Directory:** `/server`
+   - **Dockerfile Path:** `/server/Dockerfile`
+2. **HTTP Port:** `8000`
+3. **Health Check:** HTTP path `/health`
+4. **Plan:** Basic ($5/mo) works for hackathon; Professional ($12/mo) for auto-scaling
+
+### A4. Set Environment Variables (~3 min)
+
+In app settings, add these env vars for the `planly-api` service:
+
+**Required:**
+
+| Variable | Value | Encrypt? |
+|----------|-------|----------|
+| `SUPABASE_URL` | `https://xxxxx.supabase.co` | No |
+| `SUPABASE_KEY` | `eyJ...service-role-key` | Yes |
+| `USE_CLOUD_LLM` | `true` | No |
+| `OLLAMA_ENDPOINT` | `https://api.groq.com/openai` | No |
+| `OLLAMA_MODEL` | `llama-3.1-8b-instant` | No |
+| `LLM_API_KEY` | `gsk_...your-key` | Yes |
+| `JWT_SECRET_KEY` | (generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"`) | Yes |
+| `JWT_ALGORITHM` | `HS256` | No |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `525600` | No |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | `30` | No |
+| `HOST` | `0.0.0.0` | No |
+| `PORT` | `8000` | No |
+| `LOG_LEVEL` | `INFO` | No |
+
+**Optional (Google Calendar):**
+
+| Variable | Value | Encrypt? |
+|----------|-------|----------|
+| `GOOGLE_CALENDAR_ID` | `abc@group.calendar.google.com` | No |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | `/app/service_account.json` | No |
+
+For the service account JSON file, see [Google Calendar on DO](#google-calendar-on-digitalocean) below.
+
+### A5. Deploy (~2 min)
+
+Click **Create Resources**. DigitalOcean will:
+1. Pull your repo
+2. Build the Docker image
+3. Start the web service
+4. Run health check on `/health`
+
+Once healthy, your API is live at:
+```
+https://planly-api-xxxxx.ondigitalocean.app
+```
+
+Test it:
+```bash
+curl https://planly-api-xxxxx.ondigitalocean.app/health
+# {"status": "ok", "version": "1.0.0", "service": "planly-api"}
+```
+
+---
+
+## Option B: Deploy via `doctl` CLI (~8 min)
+
+### B1. Install doctl (~2 min)
+
+```bash
+# Ubuntu/Debian
+sudo snap install doctl
+
+# macOS
+brew install doctl
+
+# Auth
+doctl auth init
+```
+
+### B2. Edit App Spec (~1 min)
+
+The spec is already at `server/.do/app.yaml`. Edit the `CHANGE_ME` values:
+- `SUPABASE_URL`, `SUPABASE_KEY`
+- `LLM_API_KEY`
+- `JWT_SECRET_KEY`
+- GitHub repo path
+
+### B3. Deploy (~5 min)
+
+```bash
+doctl apps create --spec server/.do/app.yaml
+```
+
+Check status:
+```bash
+doctl apps list
+doctl apps logs <app-id> --type run
+```
+
+---
+
+## Cloud LLM Setup (Required)
+
+App Platform containers can't run Ollama. Use a cloud LLM provider:
+
+### Groq (recommended for hackathon — free, fast)
+
+1. Sign up at [console.groq.com](https://console.groq.com)
+2. Create API key
+3. Set env vars:
+   ```
+   USE_CLOUD_LLM=true
+   OLLAMA_ENDPOINT=https://api.groq.com/openai
+   OLLAMA_MODEL=llama-3.1-8b-instant
+   LLM_API_KEY=gsk_...
+   ```
+
+### Together AI (free credits)
+
+1. Sign up at [api.together.xyz](https://api.together.xyz)
+2. Create API key
+3. Set env vars:
+   ```
+   USE_CLOUD_LLM=true
+   OLLAMA_ENDPOINT=https://api.together.xyz
+   OLLAMA_MODEL=meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo
+   LLM_API_KEY=...
+   ```
+
+### OpenRouter (many models)
+
+1. Sign up at [openrouter.ai](https://openrouter.ai)
+2. Create API key
+3. Set env vars:
+   ```
+   USE_CLOUD_LLM=true
+   OLLAMA_ENDPOINT=https://openrouter.ai/api
+   OLLAMA_MODEL=meta-llama/llama-3.1-8b-instruct
+   LLM_API_KEY=sk-or-...
+   ```
+
+---
+
+## Google Calendar on DigitalOcean
+
+The calendar client loads a JSON file from `GOOGLE_SERVICE_ACCOUNT_FILE`.
+On App Platform there are two approaches:
+
+### Approach 1: Skip it (easiest)
+
+Leave `GOOGLE_CALENDAR_ID` unset. The calendar tool falls back to mock events.
+Good enough for hackathon demos.
+
+### Approach 2: Base64-encode as env var (if you need real calendar)
+
+This requires a small code change in `integrations/google_calendar/client.py`:
+
+1. Base64-encode the JSON:
+   ```bash
+   base64 -w0 integrations/google_calendar/service_account.json
+   ```
+
+2. Add env var in DO:
+   ```
+   GOOGLE_SERVICE_ACCOUNT_JSON=eyJ0eXBlIjoic2VydmljZV9hY...
+   ```
+
+3. In `client.py`, add before `_initialize`:
+   ```python
+   import base64, json, tempfile
+
+   # Decode service account from env var if file doesn't exist
+   sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+   if sa_json and not os.path.exists(settings.GOOGLE_SERVICE_ACCOUNT_FILE):
+       decoded = base64.b64decode(sa_json)
+       with open("/app/service_account.json", "w") as f:
+           f.write(decoded.decode())
+       settings.GOOGLE_SERVICE_ACCOUNT_FILE = "/app/service_account.json"
+   ```
+
+---
+
+## Connecting the Telegram Bot to the Deployed Server
+
+Once the server is live, update the telegram bot's env vars:
+
+```
+WEBSERVER_URL=https://planly-api-xxxxx.ondigitalocean.app
+```
+
+Then generate a SERVICE_TOKEN:
+```bash
+curl -X POST https://planly-api-xxxxx.ondigitalocean.app/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "bot@planly.local", "password": "service-bot-pw", "full_name": "Planly Bot"}'
+```
+
+Copy the `access_token` into the bot's `SERVICE_TOKEN` env var.
+
+---
+
+## Connecting the Desktop App to the Deployed Server
+
+Update the base URL in `desktop-app/src/main.ts` and `desktop-app/src/ui/chat.html`:
+
+```typescript
+const API_BASE = 'https://planly-api-xxxxx.ondigitalocean.app';
+```
+
+Or make it configurable via environment/settings.
+
+---
+
+## Updating After Code Changes (~2 min)
+
+If `deploy_on_push: true` is set:
+```bash
+git add server/
+git commit -m "Update server"
+git push
+```
+
+Auto-redeploys in ~2 minutes. Health check verifies `/health` before routing traffic.
+
+For manual redeploy:
+```bash
+doctl apps create-deployment <app-id> --force-rebuild
+```
+
+---
+
+## Cost
+
+| Resource | Plan | Cost |
+|----------|------|------|
+| Web Service (1 instance) | Basic | **$5/month** |
+| Bandwidth | 1TB included | $0 |
+| Supabase | Free tier | $0 |
+| Groq LLM | Free tier | $0 |
+
+**Hackathon total: $5/month** (or $10 if running bot + server)
+
+---
+
+## Architecture on DigitalOcean
+
+```
+                        DigitalOcean App Platform
+                    ┌─────────────────────────────────┐
+                    │                                  │
+Telegram API ──────>│  Worker: telegram-bot ($5/mo)    │
+  (polling)  <──────│    bot.py                        │──┐
+                    │                                  │  │ HTTPS
+                    ├──────────────────────────────────┤  │
+                    │                                  │  │
+  Desktop App ─────>│  Web Service: planly-api ($5/mo) │<─┘
+  (HTTPS)    <─────│    FastAPI + Uvicorn              │
+                    │    /agent/process                 │
+  Browser    ─────>│    /agent/confirm-actions         │
+  (/docs)    <─────│    /auth/*                        │
+                    │                                  │
+                    └────────────┬─────────────────────┘
+                                 │
+                    ┌────────────┴─────────────────────┐
+                    │     External Services             │
+                    │                                   │
+                    │  Supabase (DB)     - free tier    │
+                    │  Groq (LLM)       - free tier    │
+                    │  Google Calendar   - optional     │
+                    └───────────────────────────────────┘
+```
+
+---
+
+## Common Deploy Issues
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Build fails on `psycopg2` | Missing libpq | Dockerfile includes `libpq-dev` — make sure it's used |
+| Health check fails | App not binding to PORT | Ensure `HOST=0.0.0.0` and `PORT=8000` in env vars |
+| `Settings validation error` | Missing required env var | `SUPABASE_URL`, `SUPABASE_KEY`, `JWT_SECRET_KEY` are required |
+| 500 on `/agent/process` | LLM not reachable | Verify `USE_CLOUD_LLM=true` and `LLM_API_KEY` is valid |
+| `Connection refused` from bot | Wrong WEBSERVER_URL | Use the full `https://...ondigitalocean.app` URL |
+| CORS errors from desktop | Origins restricted | Backend has `allow_origins=["*"]` — should work. If not, check DO proxy headers |
+| Slow first request | Cold start | Basic plan has cold starts. First request after idle may take 5-10s |
+| Out of memory | Model too large | Cloud LLM offloads inference — 512MB container should be fine |
