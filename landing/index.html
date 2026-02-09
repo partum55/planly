@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planly — Your group chats, actually planned.</title>
+  <meta name="description" content="An AI agent that reads your group chats, understands what everyone wants to do, and makes it happen. Calendar events, venue suggestions, and actionable next steps — all from conversation.">
+  <link rel="preconnect" href="https://api.fontshare.com">
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@700,800&display=swap" rel="stylesheet">
+  <style>
+    /* ─── Tokens ──────────────────────────────────────────── */
+    :root {
+      --bg:          #0c0f16;
+      --bg-subtle:   #111419;
+      --surface:     #171b23;
+      --surface-hi:  #1e2330;
+      --border:      rgba(240, 237, 230, 0.06);
+      --border-hi:   rgba(240, 237, 230, 0.1);
+
+      --accent:      #e8654a;
+      --accent-dim:  rgba(232, 101, 74, 0.15);
+      --accent-2:    #f4a261;
+      --teal:        #4ecdc4;
+      --teal-dim:    rgba(78, 205, 196, 0.12);
+
+      --text:        #f0ede6;
+      --text-2:      #b0ada4;
+      --text-3:      #6b6e7a;
+
+      --font-display: 'Cabinet Grotesk', 'Satoshi', sans-serif;
+      --font-body:    'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+      --radius:      12px;
+      --radius-lg:   20px;
+      --radius-xl:   28px;
+    }
+
+    /* ─── Reset ───────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    /* ─── Utility ─────────────────────────────────────────── */
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); border: 0;
+    }
+
+    /* ─── Grain overlay ───────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-size: 200px;
+    }
+
+    /* ─── Nav ─────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 20px 0;
+      transition: background 0.3s, backdrop-filter 0.3s;
+    }
+    nav.scrolled {
+      background: rgba(12, 15, 22, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 22px;
+      letter-spacing: -0.5px;
+    }
+    .nav-logo span { color: var(--accent); }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-3);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 8px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .nav-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(232, 101, 74, 0.3);
+    }
+
+    /* ─── Hero ────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      padding: 160px 0 100px;
+      overflow: hidden;
+    }
+
+    /* Background glow */
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 600px;
+      background: radial-gradient(ellipse, rgba(232, 101, 74, 0.08) 0%, rgba(244, 162, 97, 0.03) 40%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-content {
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-3);
+      margin-bottom: 32px;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.2s forwards;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      background: var(--teal);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(48px, 7vw, 80px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -2px;
+      margin-bottom: 24px;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.3s forwards;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 18px;
+      color: var(--text-3);
+      max-width: 540px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.4s forwards;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.5s forwards;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      font-family: var(--font-body);
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { box-shadow: 0 6px 30px rgba(232, 101, 74, 0.35); }
+    .btn-ghost {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border-hi);
+    }
+    .btn-ghost:hover { border-color: var(--text-3); }
+    .btn svg { width: 18px; height: 18px; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Chat Demo ───────────────────────────────────────── */
+    .hero-demo {
+      margin-top: 64px;
+      opacity: 0;
+      animation: fadeUp 0.8s 0.7s forwards;
+    }
+    .demo-window {
+      max-width: 640px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow:
+        0 24px 80px rgba(0,0,0,0.4),
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 0 120px rgba(232, 101, 74, 0.04);
+    }
+    .demo-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 18px;
+      background: var(--bg-subtle);
+      border-bottom: 1px solid var(--border);
+    }
+    .demo-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .demo-dots span {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--surface-hi);
+    }
+    .demo-title {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-3);
+    }
+    .demo-chat {
+      padding: 20px;
+      min-height: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .demo-msg {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    .demo-msg.visible {
+      animation: msgIn 0.35s forwards;
+    }
+    @keyframes msgIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .demo-avatar {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .demo-bubble {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border-top-left-radius: 4px;
+      font-size: 13.5px;
+      line-height: 1.55;
+      background: var(--surface-hi);
+      color: var(--text-2);
+      max-width: 420px;
+    }
+    .demo-bubble .name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .demo-msg.agent .demo-bubble {
+      background: var(--accent-dim);
+      border: 1px solid rgba(232, 101, 74, 0.15);
+      border-top-left-radius: 10px;
+      color: var(--text);
+    }
+    .demo-msg.agent .demo-avatar {
+      background: var(--accent);
+    }
+
+    /* Event card inside demo */
+    .event-card {
+      margin-top: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .event-card-date {
+      background: var(--teal-dim);
+      border-radius: 8px;
+      padding: 8px 12px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .event-card-date .month {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--teal);
+      letter-spacing: 1px;
+    }
+    .event-card-date .day {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--teal);
+      line-height: 1.1;
+    }
+    .event-card-info h4 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .event-card-info p {
+      font-size: 12px;
+      color: var(--text-3);
+    }
+    .event-card-badge {
+      margin-left: auto;
+      padding: 4px 10px;
+      background: var(--teal-dim);
+      color: var(--teal);
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    /* ─── Pipeline section ────────────────────────────────── */
+    .pipeline {
+      padding: 120px 0;
+      position: relative;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 17px;
+      color: var(--text-3);
+      max-width: 500px;
+      line-height: 1.7;
+      margin-bottom: 64px;
+    }
+
+    .pipeline-steps {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      position: relative;
+    }
+
+    .pipeline-step {
+      text-align: center;
+      padding: 32px 16px;
+      background: var(--surface);
+      position: relative;
+      border-radius: 4px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s, transform 0.5s;
+    }
+    .pipeline-step.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .pipeline-step:first-child { border-radius: var(--radius) 4px 4px var(--radius); }
+    .pipeline-step:last-child { border-radius: 4px var(--radius) var(--radius) 4px; }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-3);
+      margin-bottom: 16px;
+    }
+    .step-icon {
+      width: 48px; height: 48px;
+      margin: 0 auto 16px;
+      background: var(--accent-dim);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-icon svg { width: 22px; height: 22px; color: var(--accent); }
+    .step-name {
+      font-weight: 700;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .step-desc {
+      font-size: 13px;
+      color: var(--text-3);
+      line-height: 1.5;
+    }
+
+    /* Arrow connectors */
+    .pipeline-step::after {
+      content: '';
+      position: absolute;
+      right: -9px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-left: 7px solid var(--surface);
+      z-index: 2;
+    }
+    .pipeline-step:last-child::after { display: none; }
+
+    /* ─── Features ────────────────────────────────────────── */
+    .features {
+      padding: 80px 0 120px;
+    }
+    .features-header {
+      margin-bottom: 64px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+    }
+    .feature-card {
+      padding: 36px;
+      background: var(--surface);
+      position: relative;
+      overflow: hidden;
+      transition: background 0.3s;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.4s, transform 0.4s, background 0.3s;
+    }
+    .feature-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .feature-card:nth-child(1) { border-radius: var(--radius-lg) 4px 4px 4px; }
+    .feature-card:nth-child(3) { border-radius: 4px var(--radius-lg) 4px 4px; }
+    .feature-card:nth-child(4) { border-radius: 4px 4px 4px var(--radius-lg); }
+    .feature-card:nth-child(6) { border-radius: 4px 4px var(--radius-lg) 4px; }
+    .feature-card:hover { background: var(--surface-hi); }
+    .feature-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .feature-icon svg { width: 20px; height: 20px; }
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-3);
+      line-height: 1.6;
+    }
+
+    /* ─── Architecture ────────────────────────────────────── */
+    .architecture {
+      padding: 120px 0;
+    }
+    .arch-header {
+      margin-bottom: 64px;
+    }
+    .arch-diagram {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 24px;
+      align-items: center;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .arch-clients {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .arch-card {
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      opacity: 0;
+      transform: translateX(-20px);
+      transition: opacity 0.5s, transform 0.5s;
+    }
+    .arch-card.visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .arch-card.from-right {
+      transform: translateX(20px);
+    }
+    .arch-card.from-right.visible {
+      transform: translateX(0);
+    }
+    .arch-card-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-3);
+      margin-bottom: 8px;
+    }
+    .arch-card h4 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .arch-card p {
+      font-size: 13px;
+      color: var(--text-3);
+    }
+    .arch-connector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-3);
+    }
+    .arch-connector .line {
+      width: 2px;
+      height: 40px;
+      background: var(--border-hi);
+    }
+    .arch-connector .label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 4px 10px;
+      background: var(--surface);
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .arch-backend {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .arch-backend-main {
+      padding: 28px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(232, 101, 74, 0.12);
+      border-radius: var(--radius);
+    }
+    .arch-integrations {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .arch-tag {
+      padding: 4px 10px;
+      background: var(--bg);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-3);
+    }
+
+    /* ─── Download ────────────────────────────────────────── */
+    .download {
+      padding: 120px 0;
+      text-align: center;
+    }
+    .download-header {
+      margin-bottom: 48px;
+    }
+    .download-header .section-title,
+    .download-header .section-desc {
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .download-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      max-width: 720px;
+      margin: 0 auto 48px;
+    }
+    .dl-card {
+      padding: 28px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      text-align: center;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .dl-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .dl-card svg {
+      width: 32px; height: 32px;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    .dl-card h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .dl-card p {
+      font-size: 12px;
+      color: var(--text-3);
+      margin-bottom: 16px;
+    }
+    .dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .dl-btn:hover { background: rgba(232, 101, 74, 0.25); }
+    .dl-btn svg { width: 14px; height: 14px; }
+
+    .dl-source {
+      max-width: 480px;
+      margin: 0 auto;
+      text-align: left;
+    }
+    .dl-source-label {
+      font-size: 13px;
+      color: var(--text-3);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .code-block {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+    .code-block .comment { color: var(--text-3); }
+    .code-block .cmd { color: var(--accent); }
+
+    /* ─── Footer ──────────────────────────────────────────── */
+    footer {
+      padding: 48px 0;
+      border-top: 1px solid var(--border);
+    }
+    footer .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .footer-logo {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 18px;
+    }
+    .footer-logo span { color: var(--accent); }
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+    .footer-links a {
+      font-size: 13px;
+      color: var(--text-3);
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-right {
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    /* ─── Responsive ──────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .pipeline-steps {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .pipeline-step::after { display: none; }
+      .pipeline-step,
+      .pipeline-step:first-child,
+      .pipeline-step:last-child {
+        border-radius: var(--radius);
+      }
+      .features-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .feature-card,
+      .feature-card:nth-child(1),
+      .feature-card:nth-child(3),
+      .feature-card:nth-child(4),
+      .feature-card:nth-child(6) {
+        border-radius: var(--radius);
+      }
+      .arch-diagram {
+        grid-template-columns: 1fr;
+      }
+      .arch-connector {
+        flex-direction: row;
+      }
+      .arch-connector .line {
+        width: 40px;
+        height: 2px;
+      }
+      .download-cards {
+        grid-template-columns: 1fr;
+        max-width: 320px;
+      }
+      .nav-links { display: none; }
+    }
+    @media (max-width: 600px) {
+      .hero { padding: 120px 0 60px; }
+      .hero-actions { flex-direction: column; }
+      footer .container { flex-direction: column; gap: 16px; text-align: center; }
+      .footer-left { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ─── Nav ───────────────────────────────────────────── -->
+  <nav id="nav">
+    <div class="container">
+      <a href="#" class="nav-logo">planly<span>.</span></a>
+      <ul class="nav-links">
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="https://github.com/partum55/planly" target="_blank" rel="noopener">GitHub</a></li>
+        <li>
+          <a href="#download" class="nav-cta">
+            Download
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V4a1 1 0 011-1z"/><path d="M4 15a1 1 0 011 1h10a1 1 0 110 2H5a1 1 0 01-1-1v-1a1 1 0 011-1z"/></svg>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ─── Hero ──────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="container hero-content">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        Open source &middot; Cross-platform
+      </div>
+      <h1>Your group chats,<br><em>actually planned.</em></h1>
+      <p class="hero-sub">
+        Planly reads your conversations, extracts plans, and turns "let's do dinner Friday" into a calendar event with a restaurant booked.
+      </p>
+      <div class="hero-actions">
+        <a href="#download" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V4a1 1 0 011-1z"/><path d="M4 15a1 1 0 011 1h10a1 1 0 110 2H5a1 1 0 01-1-1v-1a1 1 0 011-1z"/></svg>
+          Download
+        </a>
+        <a href="https://github.com/partum55/planly" target="_blank" rel="noopener" class="btn btn-ghost">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <!-- Chat demo -->
+      <div class="hero-demo">
+        <div class="demo-window">
+          <div class="demo-titlebar">
+            <div class="demo-dots"><span></span><span></span><span></span></div>
+            <div class="demo-title">Friends Group Chat</div>
+            <div style="width:42px"></div>
+          </div>
+          <div class="demo-chat" id="demoChat">
+            <!-- Messages injected by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── How It Works ──────────────────────────────────── -->
+  <section class="pipeline" id="how-it-works">
+    <div class="container">
+      <div class="section-label">How it works</div>
+      <h2 class="section-title">Five steps. Zero effort.</h2>
+      <p class="section-desc">
+        From casual chatter to concrete plans — Planly handles the entire pipeline automatically.
+      </p>
+      <div class="pipeline-steps">
+        <div class="pipeline-step" data-reveal>
+          <div class="step-number">01</div>
+          <div class="step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          </div>
+          <div class="step-name">Observe</div>
+          <div class="step-desc">Captures messages from Telegram or screenshots of any chat app</div>
+        </div>
+        <div class="pipeline-step" data-reveal>
+          <div class="step-number">02</div>
+          <div class="step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
+          </div>
+          <div class="step-name">Reason</div>
+          <div class="step-desc">LLM parses intent, extracts people, times, and locations</div>
+        </div>
+        <div class="pipeline-step" data-reveal>
+          <div class="step-number">03</div>
+          <div class="step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
+          </div>
+          <div class="step-name">Plan</div>
+          <div class="step-desc">Determines actions: events, venue search, time suggestions</div>
+        </div>
+        <div class="pipeline-step" data-reveal>
+          <div class="step-number">04</div>
+          <div class="step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+          </div>
+          <div class="step-name">Act</div>
+          <div class="step-desc">Executes via Google Calendar, Places, Yelp, and Maps</div>
+        </div>
+        <div class="pipeline-step" data-reveal>
+          <div class="step-number">05</div>
+          <div class="step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"/></svg>
+          </div>
+          <div class="step-name">Respond</div>
+          <div class="step-desc">Returns action cards, calendar pickers, and confirmations</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Features ──────────────────────────────────────── -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features-header">
+        <div class="section-label">Features</div>
+        <h2 class="section-title">Everything you need,<br>nothing you don't.</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card" data-reveal>
+          <div class="feature-icon" style="background: var(--accent-dim)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--accent)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"/></svg>
+          </div>
+          <h3>Multi-platform input</h3>
+          <p>Screenshot + OCR for any chat app on your desktop, or native Telegram bot integration for group chats.</p>
+        </div>
+        <div class="feature-card" data-reveal>
+          <div class="feature-icon" style="background: rgba(244,162,97,0.12)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--accent-2)"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+          </div>
+          <h3>Natural language</h3>
+          <p>Understands casual messages. Extracts plans, times, locations, and participants from how people actually talk.</p>
+        </div>
+        <div class="feature-card" data-reveal>
+          <div class="feature-icon" style="background: var(--teal-dim)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--teal)"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z"/></svg>
+          </div>
+          <h3>Google Calendar</h3>
+          <p>Creates events directly from conversations. Date, time, location, and participants — all auto-filled.</p>
+        </div>
+        <div class="feature-card" data-reveal>
+          <div class="feature-icon" style="background: rgba(244,162,97,0.12)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--accent-2)"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+          </div>
+          <h3>Venue suggestions</h3>
+          <p>Finds restaurants and places through Google Places and Yelp. Get ratings, distance, and links in one response.</p>
+        </div>
+        <div class="feature-card" data-reveal>
+          <div class="feature-icon" style="background: var(--accent-dim)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--accent)"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/></svg>
+          </div>
+          <h3>Multi-turn conversation</h3>
+          <p>Ask follow-ups, refine the plan, change details. Planly keeps context across the entire conversation.</p>
+        </div>
+        <div class="feature-card" data-reveal>
+          <div class="feature-icon" style="background: var(--teal-dim)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--teal)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+          </div>
+          <h3>Cross-platform</h3>
+          <p>Desktop app for Linux, Windows, and macOS. Telegram bot for group chats. Use what fits your workflow.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Architecture ──────────────────────────────────── -->
+  <section class="architecture" id="architecture">
+    <div class="container">
+      <div class="arch-header">
+        <div class="section-label">Architecture</div>
+        <h2 class="section-title">Built to be modular.</h2>
+        <p class="section-desc">
+          Two independent clients feeding a single intelligent backend. Clean separation, real integrations.
+        </p>
+      </div>
+      <div class="arch-diagram">
+        <!-- Clients -->
+        <div class="arch-clients">
+          <div class="arch-card" data-reveal>
+            <div class="arch-card-label">Client</div>
+            <h4>Desktop App</h4>
+            <p>Electron &middot; TypeScript &middot; Tesseract.js OCR</p>
+          </div>
+          <div class="arch-card" data-reveal>
+            <div class="arch-card-label">Client</div>
+            <h4>Telegram Bot</h4>
+            <p>python-telegram-bot &middot; Group message forwarding</p>
+          </div>
+        </div>
+
+        <!-- Connector -->
+        <div class="arch-connector">
+          <div class="line"></div>
+          <div class="label">HTTP / JSON</div>
+          <div class="line"></div>
+        </div>
+
+        <!-- Backend -->
+        <div class="arch-backend">
+          <div class="arch-card arch-backend-main from-right" data-reveal>
+            <div class="arch-card-label">Backend</div>
+            <h4>FastAPI + LLM Agent</h4>
+            <p>Auth, conversation management, tool orchestration</p>
+            <div class="arch-integrations">
+              <span class="arch-tag">Google Calendar</span>
+              <span class="arch-tag">Google Places</span>
+              <span class="arch-tag">Yelp</span>
+              <span class="arch-tag">Google Maps</span>
+            </div>
+          </div>
+          <div class="arch-card from-right" data-reveal>
+            <div class="arch-card-label">Database</div>
+            <h4>Supabase</h4>
+            <p>PostgreSQL &middot; Auth sessions, conversations, events</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Download ──────────────────────────────────────── -->
+  <section class="download" id="download">
+    <div class="container">
+      <div class="download-header">
+        <div class="section-label">Get started</div>
+        <h2 class="section-title">Download the desktop app</h2>
+        <p class="section-desc">
+          Grab the installer for your platform from GitHub Releases, or build from source.
+        </p>
+      </div>
+      <div class="download-cards">
+        <!-- Linux -->
+        <div class="dl-card">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12.504 0c-.155 0-.311.003-.467.01C7.095.162 3.06 4.457 3.004 9.399a11.992 11.992 0 00.39 3.39c.18.63.404 1.24.672 1.824.17.37.363.728.577 1.072l.063.1c.193.3.4.59.618.87l.034.041c.222.284.456.558.7.82a12.04 12.04 0 001.594 1.418c.396.3.81.58 1.24.833l.059.034c.42.244.856.463 1.304.654.097.041.196.079.295.116.434.163.88.297 1.336.401.094.022.188.042.283.06a10.82 10.82 0 002.218.227c.076 0 .152-.002.228-.005a10.913 10.913 0 002.447-.33c.094-.024.188-.05.28-.079.448-.134.884-.3 1.305-.496l.048-.022a9.64 9.64 0 001.36-.778c.42-.28.822-.588 1.204-.922l.045-.04a12.24 12.24 0 001.36-1.432 11.52 11.52 0 00.674-.88l.024-.034a10.7 10.7 0 00.59-1.007c.253-.48.47-.98.648-1.497l.018-.053c.168-.5.299-1.014.389-1.54a10.72 10.72 0 00.15-1.795C20.996 4.28 17.057.02 12.504 0zm-.478 1.488h.002c3.97.054 7.378 3.697 7.378 7.908a9.37 9.37 0 01-.127 1.553 9.38 9.38 0 01-.326 1.27l-.015.043a9.35 9.35 0 01-.534 1.23c-.164.31-.348.612-.548.9l-.02.03a10.2 10.2 0 01-.567.741l-.028.033a10.8 10.8 0 01-.6.7 10.71 10.71 0 01-1.369 1.226 8.4 8.4 0 01-1.062.716l-.05.028a8.5 8.5 0 01-1.116.528 9.3 9.3 0 01-.476.165 9.57 9.57 0 01-2.104.387c-.065.003-.13.004-.195.004a9.5 9.5 0 01-1.89-.19 10.97 10.97 0 01-.24-.052 9.2 9.2 0 01-1.14-.344 8.88 8.88 0 01-.253-.1 8.4 8.4 0 01-1.115-.56l-.05-.029a8.36 8.36 0 01-1.061-.714 10.39 10.39 0 01-1.37-1.22 10.3 10.3 0 01-.6-.706l-.028-.035a10.2 10.2 0 01-.529-.743c-.183-.281-.35-.573-.494-.876a10.1 10.1 0 01-.573-1.555c-.211-.705-.34-1.44-.378-2.194v-.014c-.003-.09-.004-.178-.004-.267 0-4.347 3.38-7.94 7.456-8.078z"/></svg>
+          <h4>Linux</h4>
+          <p>Planly-1.0.0.AppImage</p>
+          <a href="https://github.com/partum55/planly/releases/latest/download/Planly-1.0.0.AppImage" class="dl-btn" target="_blank" rel="noopener">
+            Download
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V4a1 1 0 011-1z"/></svg>
+          </a>
+        </div>
+        <!-- Windows -->
+        <div class="dl-card">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+          <h4>Windows</h4>
+          <p>Planly-Setup-1.0.0.exe</p>
+          <a href="https://github.com/partum55/planly/releases/latest/download/Planly-Setup-1.0.0.exe" class="dl-btn" target="_blank" rel="noopener">
+            Download
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V4a1 1 0 011-1z"/></svg>
+          </a>
+        </div>
+        <!-- macOS -->
+        <div class="dl-card">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          <h4>macOS</h4>
+          <p>Planly-1.0.0.dmg</p>
+          <a href="https://github.com/partum55/planly/releases/latest/download/Planly-1.0.0.dmg" class="dl-btn" target="_blank" rel="noopener">
+            Download
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v7.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V4a1 1 0 011-1z"/></svg>
+          </a>
+        </div>
+      </div>
+      <div class="dl-source">
+        <p class="dl-source-label">Or build the desktop app from source</p>
+        <div class="code-block">
+          <span class="cmd">git</span> clone https://github.com/partum55/planly.git<br>
+          <span class="cmd">cd</span> planly/desktop-app<br>
+          <span class="cmd">npm</span> install<br>
+          <span class="cmd">npm</span> run build <span class="comment"># outputs to release/</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Footer ────────────────────────────────────────── -->
+  <footer>
+    <div class="container">
+      <div class="footer-left">
+        <span class="footer-logo">planly<span>.</span></span>
+        <ul class="footer-links">
+          <li><a href="https://github.com/partum55/planly" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://github.com/partum55/planly/tree/main/docs" target="_blank" rel="noopener">Docs</a></li>
+          <li><a href="https://github.com/partum55/planly/releases" target="_blank" rel="noopener">Releases</a></li>
+        </ul>
+      </div>
+      <div class="footer-right">
+        MPL-2.0 License
+      </div>
+    </div>
+  </footer>
+
+  <!-- ─── Scripts ───────────────────────────────────────── -->
+  <script>
+    // ─── Nav scroll effect ─────────────────────────────────
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 40);
+    });
+
+    // ─── Scroll-reveal ─────────────────────────────────────
+    const reveals = document.querySelectorAll('[data-reveal]');
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry, i) => {
+        if (entry.isIntersecting) {
+          const siblings = entry.target.parentElement.querySelectorAll('[data-reveal]');
+          const idx = Array.from(siblings).indexOf(entry.target);
+          entry.target.style.transitionDelay = `${idx * 0.08}s`;
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    reveals.forEach(el => revealObserver.observe(el));
+
+    // ─── Chat demo animation ───────────────────────────────
+    const demoChat = document.getElementById('demoChat');
+    const demoMessages = [
+      { name: 'Alex', color: '#e8654a', initials: 'A', text: 'yo are we still doing dinner friday?' },
+      { name: 'Jordan', color: '#4ecdc4', initials: 'J', text: 'yesss! somewhere downtown, maybe italian?' },
+      { name: 'Sam', color: '#f4a261', initials: 'S', text: 'im down. 7pm works for me' },
+      { name: 'Alex', color: '#e8654a', initials: 'A', text: 'perfect, lets do 7. can someone find a place?' },
+      {
+        agent: true,
+        text: 'I found a plan in your chat. Here\'s what I\'ve set up:',
+        card: {
+          month: 'FEB',
+          day: '14',
+          title: 'Dinner — Italian downtown',
+          details: 'Friday 7:00 PM · 3 people',
+          badge: 'Added to Calendar'
+        }
+      }
+    ];
+
+    let demoTimeout;
+    function runDemo() {
+      demoChat.innerHTML = '';
+      demoMessages.forEach((msg, i) => {
+        const delay = i * 1200 + 800;
+        setTimeout(() => {
+          const div = document.createElement('div');
+          div.className = 'demo-msg' + (msg.agent ? ' agent' : '');
+
+          let bubbleHTML = '';
+          if (msg.agent) {
+            bubbleHTML = `
+              <div class="demo-avatar" style="background:${msg.agent ? 'var(--accent)' : ''}">P</div>
+              <div class="demo-bubble">
+                <div class="name">Planly</div>
+                ${msg.text}
+                <div class="event-card">
+                  <div class="event-card-date">
+                    <div class="month">${msg.card.month}</div>
+                    <div class="day">${msg.card.day}</div>
+                  </div>
+                  <div class="event-card-info">
+                    <h4>${msg.card.title}</h4>
+                    <p>${msg.card.details}</p>
+                  </div>
+                  <div class="event-card-badge">${msg.card.badge}</div>
+                </div>
+              </div>`;
+          } else {
+            bubbleHTML = `
+              <div class="demo-avatar" style="background:${msg.color}">${msg.initials}</div>
+              <div class="demo-bubble">
+                <div class="name">${msg.name}</div>
+                ${msg.text}
+              </div>`;
+          }
+          div.innerHTML = bubbleHTML;
+          demoChat.appendChild(div);
+
+          // Trigger animation
+          requestAnimationFrame(() => div.classList.add('visible'));
+
+          // Scroll to bottom
+          demoChat.scrollTop = demoChat.scrollHeight;
+        }, delay);
+      });
+
+      // Restart loop
+      demoTimeout = setTimeout(() => runDemo(), demoMessages.length * 1200 + 5000);
+    }
+
+    // Start demo when hero is visible
+    const heroObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        runDemo();
+        heroObserver.disconnect();
+      }
+    }, { threshold: 0.3 });
+    heroObserver.observe(document.querySelector('.hero-demo'));
+  </script>
+</body>
+</html>
