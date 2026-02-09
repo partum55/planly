@@ -1,15 +1,16 @@
-"""Application configuration settings"""
+"""Application configuration settings."""
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import Optional
+from pydantic import model_validator
+from typing import List, Optional
 
 # Get the server directory path
 SERVER_DIR = Path(__file__).parent.parent
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables"""
+    """Application settings loaded from environment variables."""
 
     # Supabase
     SUPABASE_URL: str
@@ -17,10 +18,15 @@ class Settings(BaseSettings):
     SUPABASE_DB_URL: Optional[str] = None
 
     # LLM Configuration
-    USE_CLOUD_LLM: bool = False  # True for cloud API, False for local Ollama
-    OLLAMA_ENDPOINT: str = "http://localhost:11434"  # For local, or cloud API endpoint
-    OLLAMA_MODEL: str = "llama3.1:8b"  # Model name
-    LLM_API_KEY: Optional[str] = None  # API key for cloud providers
+    USE_CLOUD_LLM: bool = False
+    OLLAMA_ENDPOINT: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.1:8b"
+    LLM_API_KEY: Optional[str] = None
+
+    # Per-phase LLM timeouts (seconds)
+    LLM_INTENT_TIMEOUT: int = 20
+    LLM_PLANNING_TIMEOUT: int = 15
+    LLM_RESPONSE_TIMEOUT: int = 15
 
     # Google Calendar
     GOOGLE_CALENDAR_ID: Optional[str] = None
@@ -36,7 +42,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    # Google OAuth (for desktop app "Continue with Google" button)
+    # Google OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     OAUTH_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
@@ -46,15 +52,35 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
 
+    # CORS — explicit list of allowed origins
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:8080",
+    ]
+
+    # Telegram webhook secret (REQUIRED — set when calling setWebhook)
+    TELEGRAM_WEBHOOK_SECRET: str
+
+    # Rate limiting
+    RATE_LIMIT_PER_MINUTE: int = 60
+
     # Context Management
     CONTEXT_WINDOW_MINUTES: int = 60
 
+    @model_validator(mode="after")
+    def _validate_secrets(self) -> "Settings":
+        if not self.TELEGRAM_WEBHOOK_SECRET or len(self.TELEGRAM_WEBHOOK_SECRET) < 8:
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_SECRET must be set and at least 8 characters. "
+                "Without it, anyone can inject messages into your context window."
+            )
+        return self
+
     class Config:
-        # Look for .env in the server directory
-        env_file = str(SERVER_DIR / '.env')
-        env_file_encoding = 'utf-8'
+        env_file = str(SERVER_DIR / ".env")
+        env_file_encoding = "utf-8"
         case_sensitive = True
-        extra = 'ignore'
+        extra = "ignore"
 
 
 # Global settings instance

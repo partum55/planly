@@ -1,26 +1,17 @@
-"""Main application entry point"""
+"""Main application entry point."""
 import uvicorn
 import logging
 from api.app import create_app
-from database.client import init_supabase
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app for ASGI servers (e.g., uvicorn/gunicorn)
+# Create FastAPI app — lifespan handler in app.py manages startup/shutdown
 app = create_app()
 
 
-@app.on_event("startup")
-def startup() -> None:
-    """Initialize services on startup."""
-    logger.info("Initializing database connection...")
-    init_supabase()
-
-
 def main():
-    """Start the application"""
-
+    """Start the application."""
     logger.info(f"""
     ╔════════════════════════════════════════╗
     ║         Planly Server Starting         ║
@@ -31,12 +22,11 @@ def main():
     ╚════════════════════════════════════════╝
     """)
 
-    # Run server
     uvicorn.run(
         app,
         host=settings.HOST,
         port=settings.PORT,
-        log_level=settings.LOG_LEVEL.lower()
+        log_level=settings.LOG_LEVEL.lower(),
     )
 
 

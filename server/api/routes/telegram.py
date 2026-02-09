@@ -1,88 +1,79 @@
-"""Telegram webhook API route"""
-from fastapi import APIRouter, HTTPException, status
+"""Telegram webhook API route with secret-token validation."""
+from fastapi import APIRouter, HTTPException, Header, status
 from uuid import UUID
-from datetime import datetime
+from typing import Optional
 import logging
 
 from api.schemas.request_schemas import TelegramWebhookRequest
 from api.schemas.response_schemas import TelegramWebhookResponse
 from database.client import get_supabase
 from database.repositories.conversation_repo import ConversationRepository
-from database.repositories.event_repo import EventRepository
-from core.agent import TelegramAgent
-from core.context_manager import ContextManager
-from core.reasoning_engine import ReasoningEngine
-from integrations.ollama.client import OllamaClient
-from tools.base import ToolRegistry
-from tools.calendar_tool import CalendarTool
-from tools.restaurant_tool import RestaurantSearchTool
-from tools.cinema_tool import CinemaSearchTool
-from integrations.google_calendar.client import GoogleCalendarClient
+from config.settings import settings
+from core.dependencies import get_agent
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def get_agent() -> TelegramAgent:
-    """Initialize and return agent"""
-    supabase = get_supabase()
-    conversation_repo = ConversationRepository(supabase)
-    event_repo = EventRepository(supabase)
+def _validate_telegram_secret(secret: Optional[str]) -> None:
+    """
+    Validate the X-Telegram-Bot-Api-Secret-Token header.
 
-    ollama_client = OllamaClient()
-
-    tool_registry = ToolRegistry()
-    calendar_client = GoogleCalendarClient()
-    tool_registry.register(CalendarTool(calendar_client))
-    tool_registry.register(RestaurantSearchTool())
-    tool_registry.register(CinemaSearchTool())
-
-    context_manager = ContextManager(conversation_repo)
-    reasoning_engine = ReasoningEngine(ollama_client, tool_registry)
-
-    agent = TelegramAgent(
-        context_manager=context_manager,
-        reasoning_engine=reasoning_engine,
-        tool_registry=tool_registry,
-        event_repo=event_repo
-    )
-
-    return agent
+    Telegram sends this header on every webhook request if a secret_token
+    was provided when calling setWebhook.  Validation is mandatory to prevent
+    prompt injection via forged webhook payloads.
+    """
+    expected = settings.TELEGRAM_WEBHOOK_SECRET
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook secret not configured on server",
+        )
+    if secret != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook secret",
+        )
 
 
 @router.post("/webhook", response_model=TelegramWebhookResponse)
-async def telegram_webhook(request: TelegramWebhookRequest):
+async def telegram_webhook(
+    request: TelegramWebhookRequest,
+    x_telegram_bot_api_secret_token: Optional[str] = Header(None),
+):
     """
-    Receive messages from Telegram bot client
+    Receive messages from Telegram bot client.
 
-    This endpoint:
-    1. Stores message in database
-    2. If bot is mentioned: runs full ORPLAR loop and returns response
-    3. Otherwise: just stores message and returns None
+    1. Validates the webhook secret header.
+    2. Stores message in database.
+    3. If bot is mentioned: runs full ORPLAR loop and returns response.
+    4. Otherwise: stores message and returns None.
     """
+    _validate_telegram_secret(x_telegram_bot_api_secret_token)
+
     try:
         supabase = get_supabase()
         conversation_repo = ConversationRepository(supabase)
 
         # Get or create conversation for this Telegram group
         conversation = await conversation_repo.get_or_create_conversation(
-            conversation_type='telegram_group',
+            conversation_type="telegram_group",
             telegram_group_id=request.group_id,
-            telegram_group_title=request.group_title
+            telegram_group_title=request.group_title,
         )
-        conversation_id = UUID(conversation['id'])
+        conversation_id = UUID(conversation["id"])
 
         # Store message
         message_data = {
-            'message_id': request.message_id,
-            'user_id': request.user_id,
-            'username': request.username,
-            'first_name': request.first_name,
-            'last_name': request.last_name,
-            'text': request.text,
-            'timestamp': request.timestamp,
-            'source': 'telegram',
-            'is_bot_mention': request.is_bot_mention
+            "message_id": request.message_id,
+            "user_id": request.user_id,
+            "username": request.username,
+            "first_name": request.first_name,
+            "last_name": request.last_name,
+            "text": request.text,
+            "timestamp": request.timestamp,
+            "source": "telegram",
+            "is_bot_mention": request.is_bot_mention,
         }
 
         await conversation_repo.insert_message(conversation_id, message_data)
@@ -93,21 +84,20 @@ async def telegram_webhook(request: TelegramWebhookRequest):
 
             agent = get_agent()
 
-            # Run full ORPLAR loop
             response_text = await agent.process_mention(
                 conversation_id=conversation_id,
-                user_id=None  # For Telegram, we don't have user account mapping yet
+                user_id=None,  # Telegram users not yet mapped to accounts
             )
 
-            logger.info(f"Response: {response_text}")
-
+            logger.info(f"Response generated for group {request.group_id}")
             return TelegramWebhookResponse(response_text=response_text)
 
-        # Not mentioned, just acknowledge
+        # Not mentioned — just acknowledge
         return TelegramWebhookResponse(response_text=None)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Telegram webhook error: {e}", exc_info=True)
-        # Don't raise HTTPException - we don't want to break the bot
-        # Just return empty response
+        # Don't raise — we don't want to break the bot
         return TelegramWebhookResponse(response_text=None)

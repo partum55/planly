@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 import logging
 
-from tools.base import BaseTool, ToolSchema, ToolParameter
+from tools.base import BaseTool, ToolSchema, ToolParameter, ToolMetadata
 from integrations.google_calendar.client import GoogleCalendarClient
 
 logger = logging.getLogger(__name__)
@@ -15,11 +15,21 @@ class CalendarTool(BaseTool):
     def __init__(self, calendar_client: GoogleCalendarClient = None):
         self.calendar_client = calendar_client
 
-    @property
-    def schema(self) -> ToolSchema:
+    def _build_schema(self) -> ToolSchema:
         return ToolSchema(
             name="calendar_create_event",
-            description="Create a calendar event for a group activity",
+            description=(
+                "Create a new Google Calendar event. This is a WRITE operation that "
+                "permanently adds an event to the linked calendar. Requires title and "
+                "datetime at minimum. Returns the event ID and a direct link to the "
+                "created event. Cannot be undone via this tool."
+            ),
+            metadata=ToolMetadata(
+                destructive_hint=True,
+                read_only_hint=False,
+                idempotent_hint=False,
+                open_world_hint=True,
+            ),
             parameters=[
                 ToolParameter(
                     name="title",
@@ -89,6 +99,7 @@ class CalendarTool(BaseTool):
                 logger.warning("Calendar client not initialized, returning mock event")
                 return {
                     'success': True,
+                    'mock': True,
                     'event_id': 'mock_event_123',
                     'event_link': 'https://calendar.google.com/event?eid=mock_event_123',
                     'event_details': {

@@ -1,8 +1,9 @@
-"""Context Manager - maintains rolling conversation window"""
+"""Context Manager — maintains rolling conversation window."""
 from datetime import datetime, timedelta, timezone
 from typing import List
 from uuid import UUID
 import logging
+import re
 
 from models.message import Message, ConversationContext
 from database.repositories.conversation_repo import ConversationRepository
@@ -10,34 +11,47 @@ from database.repositories.conversation_repo import ConversationRepository
 logger = logging.getLogger(__name__)
 
 
+def _compile_word_patterns(keywords: List[str]) -> re.Pattern:
+    """
+    Build a single compiled regex that matches any of the keywords
+    on word boundaries.  This prevents "ok" from matching inside
+    "booking" and "sorry" from matching inside "not sorry at all, I'm coming".
+    """
+    escaped = [re.escape(kw) for kw in keywords]
+    pattern = r"\b(?:" + "|".join(escaped) + r")\b"
+    return re.compile(pattern, re.IGNORECASE)
+
+
 class ContextManager:
     """
     Manages conversation context:
     - Maintains rolling 1-hour window
-    - Detects consent signals
+    - Detects consent signals (word-boundary matching)
     - Extracts time references
     """
 
     def __init__(
         self,
         conversation_repo: ConversationRepository,
-        window_minutes: int = 60
+        window_minutes: int = 60,
     ):
         self.conversation_repo = conversation_repo
         self.window_minutes = window_minutes
 
-        # Consent detection keywords
-        self.accept_keywords = [
-            'yes', 'sure', "i'm in", 'count me in', '+1',
-            'sounds good', 'im in', 'yeah', 'ok', 'okay',
-            'definitely', 'absolutely', 'for sure'
+        # Consent detection keywords — matched on word boundaries
+        self._accept_keywords = [
+            "yes", "sure", "i'm in", "count me in", "+1",
+            "sounds good", "im in", "yeah", "ok", "okay",
+            "definitely", "absolutely", "for sure",
+        ]
+        self._decline_keywords = [
+            "no", "can't", "cannot", "not available", "-1",
+            "sorry", "unable", "won't make it", "busy",
+            "have plans", "pass",
         ]
 
-        self.decline_keywords = [
-            'no', "can't", 'cannot', 'not available', '-1',
-            'sorry', 'unable', "won't make it", 'busy',
-            'have plans', 'pass'
-        ]
+        self._accept_re = _compile_word_patterns(self._accept_keywords)
+        self._decline_re = _compile_word_patterns(self._decline_keywords)
 
     async def add_message(self, conversation_id: UUID, message_data: dict):
         """Store a new message"""
@@ -85,37 +99,40 @@ class ContextManager:
         return context
 
     def _extract_participants(self, messages: List[Message]) -> dict:
-        """Extract unique participants from messages"""
+        """Extract unique participants from messages."""
         participants = {}
 
         for msg in messages:
-            if msg.user_id and msg.user_id not in participants:
-                participants[msg.user_id] = {
+            # Use str(user_id) when available, fall back to username
+            key = str(msg.user_id) if msg.user_id is not None else msg.username
+            if key and key not in participants:
+                participants[key] = {
                     'user_id': msg.user_id,
                     'username': msg.username,
                     'first_name': msg.first_name,
-                    'last_name': msg.last_name
+                    'last_name': msg.last_name,
                 }
 
         return participants
 
     def _detect_consent_signals(self, messages: List[Message]) -> dict:
-        """Detect who agreed or declined"""
+        """Detect who agreed or declined using word-boundary matching."""
         consent_signals = {}
 
         for msg in messages:
-            if not msg.user_id:
+            key = str(msg.user_id) if msg.user_id is not None else msg.username
+            if not key:
                 continue
 
-            text_lower = msg.text.lower()
+            text = msg.text
 
-            # Check for acceptance
-            if any(keyword in text_lower for keyword in self.accept_keywords):
-                consent_signals[msg.user_id] = 'accepted'
+            # Check for acceptance (word-boundary regex)
+            if self._accept_re.search(text):
+                consent_signals[key] = "accepted"
 
             # Check for decline (overrides acceptance)
-            elif any(keyword in text_lower for keyword in self.decline_keywords):
-                consent_signals[msg.user_id] = 'declined'
+            if self._decline_re.search(text):
+                consent_signals[key] = "declined"
 
         return consent_signals
 

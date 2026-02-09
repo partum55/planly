@@ -36,14 +36,5 @@ class UserLogin(BaseModel):
     password: str
 
 
-class TokenResponse(BaseModel):
-    """Token response model"""
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    user_id: UUID
-
-
-class TokenRefresh(BaseModel):
-    """Token refresh request"""
-    refresh_token: str
+# TokenResponse and TokenRefresh are defined in api.schemas.response_schemas
+# and api.schemas.request_schemas to avoid duplication.
