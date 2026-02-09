@@ -7,16 +7,19 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Create FastAPI app for ASGI servers (e.g., uvicorn/gunicorn)
+app = create_app()
 
-def main():
-    """Start the application"""
 
-    # Initialize database
+@app.on_event("startup")
+def startup() -> None:
+    """Initialize services on startup."""
     logger.info("Initializing database connection...")
     init_supabase()
 
-    # Create FastAPI app
-    app = create_app()
+
+def main():
+    """Start the application"""
 
     logger.info(f"""
     ╔════════════════════════════════════════╗
