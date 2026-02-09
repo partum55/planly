@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Google OAuth (for desktop app "Continue with Google" button)
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
+    OAUTH_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
 
     # Server
     HOST: str = "0.0.0.0"

@@ -96,6 +96,43 @@ async def refresh_token(request: RefreshTokenRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Token refresh failed")
 
 
+@router.get("/google/auth-url")
+async def get_google_auth_url():
+    """
+    Get Google OAuth authorization URL for desktop app
+
+    Returns:
+        Authorization URL that desktop app should open
+    """
+    try:
+        from config.settings import settings
+        from services.oauth_service import GoogleOAuthService
+
+        oauth_service = GoogleOAuthService()
+
+        if not oauth_service.is_configured():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Google OAuth not configured"
+            )
+
+        redirect_uri = getattr(settings, 'OAUTH_REDIRECT_URI', 'http://localhost:8000/auth/google/callback')
+        auth_url = oauth_service.get_authorization_url(redirect_uri)
+
+        return {
+            "auth_url": auth_url,
+            "redirect_uri": redirect_uri,
+            "client_id": oauth_service.client_id
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating auth URL: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate authorization URL"
+        )
+
+
 @router.post("/google/callback", response_model=TokenResponse)
 async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
     """
@@ -109,28 +146,25 @@ async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
     """
     try:
         from config.settings import settings
+        from services.oauth_service import GoogleOAuthService
 
-        # Exchange code for Google access token
-        token_url = "https://oauth2.googleapis.com/token"
-        token_data = {
-            "code": request.code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": "http://localhost:8000/auth/google/callback",
-            "grant_type": "authorization_code"
-        }
+        # Initialize OAuth service
+        oauth_service = GoogleOAuthService()
 
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(token_url, data=token_data)
-            token_response.raise_for_status()
-            tokens = token_response.json()
+        # Check if OAuth is configured
+        if not oauth_service.is_configured():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"
+            )
 
-            # Fetch user info from Google
-            userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
-            headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-            userinfo_response = await client.get(userinfo_url, headers=headers)
-            userinfo_response.raise_for_status()
-            user_info = userinfo_response.json()
+        # Determine redirect URI based on environment
+        # For production, use settings.OAUTH_REDIRECT_URI if available
+        redirect_uri = getattr(settings, 'OAUTH_REDIRECT_URI', 'http://localhost:8000/auth/google/callback')
+
+        # Authenticate user with Google
+        auth_result = await oauth_service.authenticate_user(request.code, redirect_uri)
+        user_info = auth_result['user_info']
 
         # Find or create user
         supabase = get_supabase()
@@ -140,15 +174,17 @@ async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
         user = await user_repo.get_user_by_email(user_info['email'])
 
         if not user:
-            # Create new user
+            # Create new user (no password for OAuth users)
             user, access_token, refresh_token = await auth_service.register_user(
                 email=user_info['email'],
                 password=None,  # No password for OAuth users
                 full_name=user_info.get('name')
             )
+            logger.info(f"Created new user via Google OAuth: {user_info['email']}")
         else:
             # Existing user - generate tokens
             access_token, refresh_token = await auth_service.generate_tokens(UUID(user['id']))
+            logger.info(f"Existing user logged in via Google OAuth: {user_info['email']}")
 
         return TokenResponse(
             user_id=str(user['id']),
@@ -156,12 +192,15 @@ async def google_oauth_callback(request: GoogleOAuthCallbackRequest):
             refresh_token=refresh_token
         )
 
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Google OAuth error: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid authorization code")
+    except ValueError as e:
+        logger.error(f"Google OAuth configuration error: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     except Exception as e:
         logger.error(f"Google OAuth callback error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="OAuth authentication failed")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth authentication failed. Please try again."
+        )
 
 
 @router.get("/me", response_model=UserResponse)
