@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Planly</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: #1a1a2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .view { display: none; }
+    .view.active { display: flex; }
+
+    /* ─── Splash View ────────────────────────────── */
+
+    #view-splash {
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      -webkit-app-region: drag;
+    }
+
+    .splash {
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 36px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.5px;
+      margin-bottom: 32px;
+    }
+
+    .logo span {
+      color: #6c5ce7;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(108, 92, 231, 0.2);
+      border-top-color: #6c5ce7;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .splash-status {
+      font-size: 13px;
+      color: #888;
+      transition: color 0.3s;
+    }
+
+    .splash-status.connected {
+      color: #00d26a;
+    }
+
+    .splash-status.error {
+      color: #ff4757;
+    }
+
+    /* ─── Login View ─────────────────────────────── */
+
+    #view-login {
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+
+    .login-box {
+      width: 360px;
+      padding: 32px 28px;
+      color: #e0e0e0;
+    }
+
+    .login-box .title-bar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 28px;
+      -webkit-app-region: drag;
+    }
+
+    .login-box h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .esc-hint {
+      text-align: center;
+      font-size: 10px;
+      color: #444;
+      margin-bottom: 20px;
+    }
+
+    .google-btn {
+      width: 100%;
+      padding: 12px;
+      background: #fff;
+      color: #333;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: background 0.15s;
+      margin-bottom: 20px;
+    }
+    .google-btn:hover { background: #f0f0f0; }
+    .google-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .google-btn svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+    }
+    .divider span {
+      font-size: 12px;
+      color: #555;
+      text-transform: lowercase;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      padding: 3px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: #888;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab.active { background: #6c5ce7; color: #fff; }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      color: #e0e0e0;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus { border-color: #6c5ce7; }
+
+    .submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: #6c5ce7;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 8px;
+    }
+    .submit-btn:hover { background: #5a4bd1; }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error-msg {
+      color: #ff4757;
+      font-size: 12px;
+      margin-top: 12px;
+      text-align: center;
+      display: none;
+    }
+
+    .error-msg.visible { display: block; }
+
+    .name-field { display: none; }
+    .name-field.visible { display: block; }
+
+    /* ─── Home View ──────────────────────────────── */
+
+    #view-home {
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+
+    .home-box {
+      width: 320px;
+      padding: 32px 28px;
+      color: #e0e0e0;
+      text-align: center;
+    }
+
+    .home-box .title-bar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 8px;
+      -webkit-app-region: drag;
+    }
+
+    .home-box h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .home-greeting {
+      font-size: 15px;
+      color: #ccc;
+      margin-bottom: 24px;
+    }
+
+    .shortcut-hint {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 28px;
+    }
+
+    .shortcut-hint kbd {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: inherit;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-logout {
+      background: #6c5ce7;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .btn-logout:hover { background: #5a4bd1; }
+
+    .btn-delete {
+      background: transparent;
+      color: #ff4757;
+      margin-bottom: 12px;
+      font-size: 12px;
+      padding: 8px;
+    }
+    .btn-delete:hover { background: rgba(255,71,87,0.1); }
+
+    .btn-quit {
+      background: rgba(255,255,255,0.06);
+      color: #aaa;
+    }
+    .btn-quit:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  </style>
+</head>
+<body>
+
+<!-- ─── Splash View ─────────────────────────── -->
+<div class="view active" id="view-splash">
+  <div class="splash">
+    <div class="logo">Plan<span>ly</span></div>
+    <div class="spinner" id="spinner"></div>
+    <div class="splash-status" id="splashStatus">Starting...</div>
+  </div>
+</div>
+
+<!-- ─── Login View ──────────────────────────── -->
+<div class="view" id="view-login">
+  <div class="login-box">
+    <div class="title-bar">
+      <h1>Planly</h1>
+    </div>
+    <div class="esc-hint">Esc to hide</div>
+
+    <!-- Google OAuth -->
+    <button class="google-btn" id="googleBtn">
+      <svg viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <div class="divider"><span>or</span></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="login">Login</button>
+      <button class="tab" data-tab="register">Register</button>
+    </div>
+
+    <form id="authForm">
+      <div class="form-group name-field" id="nameField">
+        <label>Full Name</label>
+        <input type="text" id="fullName" placeholder="John Doe" />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Enter password" required />
+      </div>
+      <button type="submit" class="submit-btn" id="submitBtn">Login</button>
+      <div class="error-msg" id="errorMsg"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ─── Home View ───────────────────────────── -->
+<div class="view" id="view-home">
+  <div class="home-box">
+    <div class="title-bar">
+      <h1>Planly</h1>
+    </div>
+    <div class="home-greeting" id="homeGreeting">Welcome!</div>
+    <div class="shortcut-hint">Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>J</kbd> to open chat</div>
+    <button class="btn btn-logout" id="logoutBtn">Logout</button>
+    <button class="btn btn-delete" id="deleteAccountBtn">Delete Account</button>
+    <button class="btn btn-quit" id="quitBtn">Quit</button>
+  </div>
+</div>
+
+<script>
+  // ─── View switching ─────────────────────────
+  const views = document.querySelectorAll('.view');
+
+  function navigate(viewName) {
+    views.forEach(v => v.classList.remove('active'));
+    const target = document.getElementById('view-' + viewName);
+    if (target) target.classList.add('active');
+
+    // Reset login form when navigating to login
+    if (viewName === 'login') {
+      const form = document.getElementById('authForm');
+      if (form) form.reset();
+      const err = document.getElementById('errorMsg');
+      if (err) err.classList.remove('visible');
+    }
+
+    // Reset splash when navigating to splash
+    if (viewName === 'splash') {
+      const status = document.getElementById('splashStatus');
+      const spinner = document.getElementById('spinner');
+      if (status) {
+        status.textContent = 'Starting...';
+        status.className = 'splash-status';
+      }
+      if (spinner) spinner.style.borderTopColor = '#6c5ce7';
+    }
+  }
+
+  // ─── IPC listeners ──────────────────────────
+  if (window.planly) {
+    window.planly.onNavigate((view) => {
+      navigate(view);
+    });
+
+    window.planly.onSplashStatus((status) => {
+      const statusEl = document.getElementById('splashStatus');
+      const spinnerEl = document.getElementById('spinner');
+      if (!statusEl) return;
+
+      statusEl.textContent = status;
+      if (status.toLowerCase().includes('welcome')) {
+        statusEl.classList.remove('error');
+        statusEl.classList.add('connected');
+        if (spinnerEl) spinnerEl.style.borderTopColor = '#00d26a';
+      } else if (status.toLowerCase().includes('unavailable') || status.toLowerCase().includes('failed') || status.toLowerCase().includes('error') || status.toLowerCase().includes('expired')) {
+        statusEl.classList.remove('connected');
+        statusEl.classList.add('error');
+        if (spinnerEl) spinnerEl.style.borderTopColor = '#ff4757';
+      }
+    });
+
+    window.planly.onUserInfo((info) => {
+      const greeting = document.getElementById('homeGreeting');
+      if (greeting && info.name) {
+        greeting.textContent = 'Welcome, ' + info.name + '!';
+      }
+    });
+  }
+
+  // ─── Login logic ────────────────────────────
+  let mode = 'login';
+
+  const tabs = document.querySelectorAll('.tab');
+  const nameField = document.getElementById('nameField');
+  const submitBtn = document.getElementById('submitBtn');
+  const errorMsg = document.getElementById('errorMsg');
+  const googleBtn = document.getElementById('googleBtn');
+
+  // Google OAuth
+  googleBtn.addEventListener('click', async () => {
+    if (!window.planly) return;
+    googleBtn.disabled = true;
+    googleBtn.textContent = 'Opening Google...';
+    try {
+      await window.planly.startGoogleOAuth();
+    } catch (err) {
+      errorMsg.textContent = err.message || 'Google sign-in failed';
+      errorMsg.classList.add('visible');
+    } finally {
+      googleBtn.disabled = false;
+      googleBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        Continue with Google
+      `;
+    }
+  });
+
+  // Tab switching
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      mode = tab.dataset.tab;
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      nameField.classList.toggle('visible', mode === 'register');
+      submitBtn.textContent = mode === 'login' ? 'Login' : 'Create Account';
+      errorMsg.classList.remove('visible');
+    });
+  });
+
+  // Form submit
+  document.getElementById('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    errorMsg.classList.remove('visible');
+
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const fullName = document.getElementById('fullName').value;
+
+    try {
+      if (mode === 'login') {
+        await window.planly.login(email, password);
+      } else {
+        await window.planly.register(email, password, fullName);
+      }
+    } catch (err) {
+      errorMsg.textContent = err.message || 'Authentication failed';
+      errorMsg.classList.add('visible');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  // ─── Home buttons ───────────────────────────
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    if (window.planly) window.planly.logoutAndRestart();
+  });
+
+  document.getElementById('deleteAccountBtn').addEventListener('click', async () => {
+    if (!window.planly) return;
+    if (!confirm('Are you sure? This will permanently delete your account and all data.')) return;
+    try {
+      await window.planly.deleteAccount();
+    } catch (err) {
+      alert(err.message || 'Failed to delete account');
+    }
+  });
+
+  document.getElementById('quitBtn').addEventListener('click', () => {
+    if (window.planly) window.planly.quitApp();
+  });
+</script>
+
+</body>
+</html>
